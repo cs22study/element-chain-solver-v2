@@ -504,7 +504,7 @@ function loadShot(file){
       rect={x0,y0,x1:x0+ww,y1:y0+hh};
     }
     shot={full,cx,w,h,rect,auto:!!auto,cells:Array(25).fill(-1)};
-    $('shot').open=true;$('cvbox').style.display='block';
+    $('cvbox').style.display='block';
     redrawShot();
   };
   img.onerror=()=>{$('shotmsg').textContent='無法讀取這個圖片檔。';};
@@ -549,7 +549,7 @@ function redrawShot(){
   }
   // 套用到盤面
   board=board.map((v,i)=>shot.cells[i]>=0?shot.cells[i]:v);
-  results=null;$('res').innerHTML='';$('hint').textContent='已由截圖更新盤面,請按「計算」。';
+  results=null;$('res').innerHTML='';$('hint').textContent='已由截圖更新盤面,請按「計算」。'+((!shot.auto||unk)?'(辨識可能有誤,請展開「截圖辨識」檢查)':'');
   $('shotmsg').textContent=(shot.auto?'已自動定位格子。':'自動定位失敗,請手動拖框對準 5×5 卡片。')+(unk?` 有 ${unk} 格無法辨識(紅色「?」,沿用原本的值),請調整框或用筆刷手動修正。`:' 25 格都已辨識,若有錯誤可微調框或用筆刷修正。');
   render();
 }
