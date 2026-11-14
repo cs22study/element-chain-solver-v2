@@ -77,28 +77,15 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
    <div class="mut" id="shotmsg"></div>
   </details>
 
-  <details open>
-   <summary>參數</summary>
-   <div class="row">
-    <label>搜尋深度(最多連點幾下) <select id="depth">
-     <option value="1">1</option><option value="2" selected>2</option><option value="3">3(較慢)</option><option value="4">4(很慢)</option>
-    </select></label>
-   </div>
-   <div class="row">
-    <label><input type="checkbox" id="ign" checked style="width:auto"> 忽略新補卡片彼此連成的線(只算跟留在盤面上的卡片相連的線)</label>
-   </div>
-   <div class="row">
-    <label>連鎖隨機取樣次數 <input class="w" id="rs" type="number" min="1" max="20" value="4"></label>
-   </div>
-  </details>
   <details>
    <summary>計算方式與假設</summary>
    <ul>
     <li>點一張只消除那一張 → 上方下落 → 空位隨機補滿 → 橫向或直向連續 3 張以上同屬性者自動消除(T 字、十字、L 字等線條交會也一起消),重複到沒有為止。2×2 方塊這類沒有 3 連線的不算。</li>
     <li>分數 = 總消除張數 ÷ 點擊數。每一步都假設你看到新盤面後再選最佳點(適應性策略),補牌是隨機的,所以算的是期望值。</li>
-    <li>對每個起手點,計算「接下來連點 h 下」的最大期望消除數,h 取 1~深度,取 期望/h 最高者;這就包含「先佈局、最後才爆」的情況。</li>
+    <li>對每個起手點,計算「接下來連點 1 或 2 下」的最大期望消除數,取 期望/點擊數 較高者;這就包含「先佈局、最後才爆」的情況。</li>
     <li>點下去補牌後盤面會變,建議每點一下就把新盤面輸入重算。</li>
-    <li>第一步的補牌結果為精確枚舉;連鎖過程中的補牌為隨機取樣,深度越大誤差/耗時越大。</li>
+    <li>第一步的補牌結果為精確枚舉;連鎖過程中的補牌為隨機取樣(每個連鎖分支模擬 100 次),所以分數是估計值,名次接近時可能互換。</li>
+    <li>為了讓估計偏保守,新補進來的卡片彼此自己連成的線不算,只算跟留在盤面上的卡片相連的線。</li>
    </ul>
   </details>
  </div>
@@ -304,7 +291,7 @@ function engine(){
 }
 // 回傳 steps:clear(消除哪些卡)與 fall(哪些卡下移、哪些新卡從上方掉入)交替
 function buildSteps(start,idx){
-  const E=engine();E.setIgn(getIgn());
+  const E=engine();E.setIgn(1);
   const b=Int8Array.from(start),ids=[...Array(25).keys()],colorOf=new Map();
   start.forEach((c,i)=>colorOf.set(i,c));
   let nid=25,toClear=[idx];const steps=[];let total=0;
@@ -380,12 +367,11 @@ function simulate(){ // 播放一次隨機模擬;模擬完按鈕變成「回復�
   if(simShown){render();$('hint').textContent='已回復為你的盤面,可以再次模擬。';return;}
   animate(board.slice(),rank()[0]);
 }
-function getIgn(){return $('ign').checked?1:0;}
 
 function run(){
   if(worker)worker.terminate();
   $('go').disabled=true;$('pg').style.width='0';$('st').textContent='計算中…';
-  const H=+$('depth').value,t0=performance.now();
+  const H=2,t0=performance.now();
   const src=$('engine').textContent+`
   onmessage=e=>{const d=e.data;R=d.R;IGN=d.ign;rng=mulberry32(12345);
    const res=analyze(Int8Array.from(d.board),d.H,n=>postMessage({prog:n}));postMessage({res});};
@@ -399,7 +385,7 @@ function run(){
     render();showResults();
   };
   worker.onerror=e=>{$('go').disabled=false;$('st').textContent='錯誤:'+e.message;};
-  worker.postMessage({board,H,ign:getIgn(),R:Math.max(1,+$('rs').value||1)});
+  worker.postMessage({board,H,ign:1,R:100});
 }
 $('go').onclick=run;
 /* ===== 截圖辨識 ===== */
