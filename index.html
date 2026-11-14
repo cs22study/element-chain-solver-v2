@@ -85,18 +85,10 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
     </select></label>
    </div>
    <div class="row">
-    <label>模擬動畫速度 <select id="speed">
-     <option value="1.6">慢</option><option value="1" selected>中</option><option value="0.5">快</option><option value="0.15">極快</option>
-    </select></label>
-   </div>
-   <div class="row">
     <label><input type="checkbox" id="ign" checked style="width:auto"> 忽略新補卡片彼此連成的線(只算跟留在盤面上的卡片相連的線)</label>
    </div>
    <div class="row">
     <label>連鎖隨機取樣次數 <input class="w" id="rs" type="number" min="1" max="20" value="4"></label>
-   </div>
-   <div class="row"><label>補牌機率權重</label>
-    <span id="wts"></span>
    </div>
   </details>
   <details>
@@ -264,8 +256,6 @@ const $=id=>document.getElementById(id);
 const pal=$('pal');
 NAMES.forEach((n,i)=>{const b=document.createElement('button');b.className='pal c'+i+(i===brush?' on':'');b.textContent=n;
  b.onclick=()=>{brush=i;[...pal.children].forEach((x,j)=>x.classList.toggle('on',j===i));};pal.appendChild(b);});
-// 權重
-NAMES.forEach((n,i)=>{const s=document.createElement('span');s.innerHTML=`<label>${n}</label><input class="w" type="number" min="0" step="0.05" value="1" data-i="${i}"> `;$('wts').appendChild(s);});
 
 function rank(){ // 排名 index -> rank
   if(!results)return null;
@@ -309,12 +299,12 @@ function showResults(){
 // 在主執行緒也載入一份引擎,用來產生模擬動畫的每一步
 let ENG=null;
 function engine(){
-  if(!ENG)ENG=new Function($('engine').textContent+";return {setIgn:v=>{IGN=v},setW:setWeights,clearGroups,draw}")();
+  if(!ENG)ENG=new Function($('engine').textContent+";return {setIgn:v=>{IGN=v},clearGroups,draw}")();
   return ENG;
 }
 // 回傳 steps:clear(消除哪些卡)與 fall(哪些卡下移、哪些新卡從上方掉入)交替
 function buildSteps(start,idx){
-  const E=engine();E.setW(getW());E.setIgn(getIgn());
+  const E=engine();E.setIgn(getIgn());
   const b=Int8Array.from(start),ids=[...Array(25).keys()],colorOf=new Map();
   start.forEach((c,i)=>colorOf.set(i,c));
   let nid=25,toClear=[idx];const steps=[];let total=0;
@@ -349,7 +339,7 @@ let animating=false;
 async function animate(start,idx){
   if(animating)return;animating=true;
   $('sim').disabled=true;$('go').disabled=true;
-  const sp=+$('speed').value;
+  const sp=0.5;
   const {steps,total,final,colorOf}=buildSteps(start,idx);
   const g=$('grid');g.innerHTML='';g.classList.add('stage');
   g.style.setProperty('--fall',(0.5*sp)+'s');g.style.setProperty('--popd',(0.45*sp)+'s');
@@ -391,14 +381,13 @@ function simulate(){ // 播放一次隨機模擬;模擬完按鈕變成「回復�
   animate(board.slice(),rank()[0]);
 }
 function getIgn(){return $('ign').checked?1:0;}
-function getW(){return [...document.querySelectorAll('#wts input')].map(x=>Math.max(0,+x.value||0));}
 
 function run(){
   if(worker)worker.terminate();
   $('go').disabled=true;$('pg').style.width='0';$('st').textContent='計算中…';
   const H=+$('depth').value,t0=performance.now();
   const src=$('engine').textContent+`
-  onmessage=e=>{const d=e.data;R=d.R;setWeights(d.w);IGN=d.ign;rng=mulberry32(12345);
+  onmessage=e=>{const d=e.data;R=d.R;IGN=d.ign;rng=mulberry32(12345);
    const res=analyze(Int8Array.from(d.board),d.H,n=>postMessage({prog:n}));postMessage({res});};
   `;
   worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
@@ -410,7 +399,7 @@ function run(){
     render();showResults();
   };
   worker.onerror=e=>{$('go').disabled=false;$('st').textContent='錯誤:'+e.message;};
-  worker.postMessage({board,H,ign:getIgn(),R:Math.max(1,+$('rs').value||1),w:getW()});
+  worker.postMessage({board,H,ign:getIgn(),R:Math.max(1,+$('rs').value||1)});
 }
 $('go').onclick=run;
 /* ===== 截圖辨識 ===== */
