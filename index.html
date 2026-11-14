@@ -274,7 +274,8 @@ function rank(){ // 排名 index -> rank
   return results.slice().sort((a,b)=>b.best-a.best).map(r=>r.idx);
 }
 function render(){
-  const g=$('grid');g.innerHTML='';
+  const g=$('grid');g.innerHTML='';g.classList.remove('stage');
+  if(simShown){simShown=false;setSimBtn();}
   const order=rank();
   for(let i=0;i<25;i++){
     const d=document.createElement('div');d.className='cell c'+board[i];
@@ -376,14 +377,17 @@ async function animate(start,idx){
       await sleep(500*sp+120);
     }
   }
-  g.classList.remove('stage');
   // 模擬只是預覽:盤面與排名結果都維持不變
   $('hint').textContent=`模擬:點了${pos(idx)},共消除 ${total} 張(連鎖 ${steps.filter(s=>s.type==='clear').length-1} 輪)。這只是一次隨機預覽,盤面沒有改變。`;
-  render();$('go').disabled=false;animating=false;
+  simShown=true;setSimBtn();
+  if($('sim'))$('sim').disabled=false;$('go').disabled=false;animating=false;
 }
-function simulate(){ // 照一般規則跑一次隨機結果並播放動畫
-  const idx=rank()[0];
-  animate(board.slice(),idx);
+let simShown=false; // true:格子目前顯示的是模擬後的畫面
+function setSimBtn(){const b=$('sim');if(b)b.textContent=simShown?'回復版面':'模擬點擊 #1(隨機補牌)';}
+function simulate(){ // 播放一次隨機模擬;模擬完按鈕變成「回復版面」
+  if(animating)return;
+  if(simShown){render();$('hint').textContent='已回復為你的盤面,可以再次模擬。';return;}
+  animate(board.slice(),rank()[0]);
 }
 function getW(){return [...document.querySelectorAll('#wts input')].map(x=>Math.max(0,+x.value||0));}
 
