@@ -22,8 +22,9 @@ h1{font-size:18px;margin:0 0 4px}
  color:#fff;font-weight:800;font-size:22px;cursor:pointer;position:relative;user-select:none;border:3px solid transparent}
 .cell small{font-size:12px;font-weight:600;opacity:.95;line-height:1.1}
 .cell .rk{position:absolute;top:2px;left:5px;font-size:12px;font-weight:800}
-.cell.r1{border-color:#fff;box-shadow:0 0 12px #fff8}
-.cell.r2,.cell.r3{border-color:var(--acc)}
+.cell.r1{border-color:#ffd21f;box-shadow:0 0 14px #ffd21fcc}
+.cell.r2,.cell.r3{border-color:#ffffff88}
+.cell .star{position:absolute;top:1px;right:5px;font-size:18px;color:#ffd21f;text-shadow:0 0 3px #000,0 0 3px #000}
 .c0{background:var(--e0)}.c1{background:var(--e1)}.c2{background:var(--e2)}.c3{background:var(--e3);color:#222}.c4{background:var(--e4)}
 /* 模擬動畫舞台:卡片用絕對定位,靠 top 的 transition 做掉落 */
 .grid.stage{display:block;position:relative;aspect-ratio:1;overflow:hidden;--cs:calc((100% - 24px)/5)}
@@ -263,7 +264,7 @@ function render(){
       // 期望分數越高越鮮亮,越低越灰暗
       const t=hi>lo?(x.best-lo)/(hi-lo):1;
       d.style.filter=`saturate(${(0.05+0.95*t).toFixed(2)}) brightness(${(0.5+0.5*t).toFixed(2)})`;
-      inner=`<span class="rk">#${r}</span>${NAMES[board[i]]}<small>${x.best.toFixed(2)}</small>`;
+      inner=`<span class="rk">#${r}</span>${r===1?'<span class="star">★</span>':''}${NAMES[board[i]]}<small>${x.best.toFixed(2)}</small>`;
     }
     d.innerHTML=inner;
     d.onclick=()=>{board[i]=brush;results=null;$('res').innerHTML='';$('hint').textContent='盤面已變更,請重新計算。';render();};
