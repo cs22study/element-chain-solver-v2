@@ -271,6 +271,22 @@ function render(){
     g.appendChild(d);
   }
   setSimBtn();
+  saveState();
+}
+// 重新整理後保留盤面與上次的計算結果(只存在這個瀏覽器,不會上傳)
+const SAVE_KEY='element-chain-solver.v1';
+function saveState(){
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({board,results}));}catch(e){}
+}
+function loadState(){
+  try{
+    const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');
+    if(!d||!Array.isArray(d.board)||d.board.length!==25||!d.board.every(v=>Number.isInteger(v)&&v>=0&&v<5))return false;
+    board=d.board;
+    const r=d.results;
+    if(Array.isArray(r)&&r.length===25&&r.every(x=>x&&Array.isArray(x.q)&&Number.isFinite(x.best)&&Number.isFinite(x.bestH)))results=r;
+    return true;
+  }catch(e){return false;}
 }
 function showResults(){
   const order=rank();const top=results[order[0]].best||1;
@@ -567,7 +583,9 @@ function redrawShot(){
 })();
 
 $('sim').onclick=simulate;
+const restored=loadState();
 render();
+if(restored&&results){showResults();$('st').textContent='已還原上次的計算結果(盤面沒變就不用重算)';}
 </script>
 </body>
 </html>
