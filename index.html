@@ -68,8 +68,14 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
     </select></label>
    </div>
    <div class="row">
+    <label>消除範圍 <select id="shape">
+     <option value="0">只消除成線(橫/直 3 連以上)的卡片</option>
+     <option value="1">整塊相連同屬性一起消除(含線外多連的)</option>
+    </select></label>
+   </div>
+   <div class="row">
     <label>連鎖判定 <select id="mode">
-     <option value="1">只看「有移動/新補」卡片所在的相連群組</option>
+     <option value="1">只看「有移動/新補」卡片所在的 3 連線</option>
      <option value="0">每次掉落後全盤檢查</option>
     </select></label>
    </div>
@@ -83,7 +89,7 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
   <details>
    <summary>計算方式與假設</summary>
    <ul>
-    <li>點一張只消除那一張 → 上方下落 → 空位隨機補滿 → 3 張以上上下左右相連者自動消除,重複到沒有為止。</li>
+    <li>點一張只消除那一張 → 上方下落 → 空位隨機補滿 → 橫向或直向連續 3 張以上同屬性者自動消除(T 字、十字、L 字等線條交會也一起消),重複到沒有為止。2×2 方塊這類沒有 3 連線的不算。</li>
     <li>分數 = 總消除張數 ÷ 點擊數。每一步都假設你看到新盤面後再選最佳點(適應性策略),補牌是隨機的,所以算的是期望值。</li>
     <li>對每個起手點,計算「接下來連點 h 下」的最大期望消除數,h 取 1~深度,取 期望/h 最高者;這就包含「先佈局、最後才爆」的情況。</li>
     <li>點下去補牌後盤面會變,建議每點一下就把新盤面輸入重算。</li>
@@ -101,7 +107,7 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
 
 <script type="text/plain" id="engine">
 const N=5,CELLS=25,K=5;
-let MODE=1,R=4,weights=[.2,.2,.2,.2,.2],cum=[.2,.4,.6,.8,1];
+let MODE=1,SHAPE=0,R=4,weights=[.2,.2,.2,.2,.2],cum=[.2,.4,.6,.8,1];
 let rng=Math.random;
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 function setWeights(w){const s=w.reduce((a,b)=>a+b,0);weights=w.map(x=>x/s);cum=[];let c=0;for(const x of weights){c+=x;cum.push(c)}}
@@ -120,25 +126,36 @@ function gravity(b,moved){
   }
   return empties;
 }
-const stack=new Int8Array(CELLS),seen=new Uint8Array(CELLS),grp=new Int8Array(CELLS);
+const mark=new Uint8Array(CELLS),stk=new Int8Array(CELLS);
+// 只有橫向或直向連續 3 張以上才算;T/十字/L 是兩條線交會,自然一起消除
 function clearGroups(b,moved){
-  seen.fill(0);let total=0;
-  for(let s=0;s<CELLS;s++){
-    if(seen[s]||b[s]<0)continue;
-    const v=b[s];let sp=0,gn=0,hasMoved=false;
-    stack[sp++]=s;seen[s]=1;
-    while(sp){
-      const p=stack[--sp];grp[gn++]=p;if(moved[p])hasMoved=true;
-      const r=(p/N)|0,c=p%N;
-      if(r>0){const q=p-N;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
-      if(r<N-1){const q=p+N;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
-      if(c>0){const q=p-1;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
-      if(c<N-1){const q=p+1;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
+  mark.fill(0);let any=false;
+  for(let dir=0;dir<2;dir++){
+    for(let l=0;l<N;l++){
+      let i=0;
+      while(i<N){
+        const p0=dir?i*N+l:l*N+i,v=b[p0];
+        if(v<0){i++;continue;}
+        let j=i,hm=false;
+        while(j<N){const p=dir?j*N+l:l*N+j;if(b[p]!==v)break;if(moved[p])hm=true;j++;}
+        if(j-i>=3&&(MODE===0||hm)){any=true;for(let k=i;k<j;k++)mark[dir?k*N+l:l*N+k]=1;}
+        i=j;
+      }
     }
-    if(gn>=3&&(MODE===0||hasMoved)){ for(let i=0;i<gn;i++)grp[i]>=0&&(b[grp[i]]=-2); total+=gn; }
   }
-  // -2 暫存「待消除」,避免影響同輪其他群組判斷
-  for(let i=0;i<CELLS;i++)if(b[i]===-2)b[i]=-1;
+  if(!any)return 0;
+  if(SHAPE===1){ // 連同相連的同屬性卡片整塊消除
+    let sp=0;for(let i=0;i<CELLS;i++)if(mark[i])stk[sp++]=i;
+    while(sp){
+      const p=stk[--sp],r=(p/N)|0,c=p%N,v=b[p];
+      if(r>0&&!mark[p-N]&&b[p-N]===v){mark[p-N]=1;stk[sp++]=p-N;}
+      if(r<N-1&&!mark[p+N]&&b[p+N]===v){mark[p+N]=1;stk[sp++]=p+N;}
+      if(c>0&&!mark[p-1]&&b[p-1]===v){mark[p-1]=1;stk[sp++]=p-1;}
+      if(c<N-1&&!mark[p+1]&&b[p+1]===v){mark[p+1]=1;stk[sp++]=p+1;}
+    }
+  }
+  let total=0;
+  for(let i=0;i<CELLS;i++)if(mark[i]){b[i]=-1;total++;}
   return total;
 }
 function cascade(b,moved){
@@ -285,7 +302,7 @@ function showResults(){
 }
 function simulate(){ // 照一般規則跑一次隨機結果,方便預覽
   const order=rank(),idx=order[0];
-  const code=$('engine').textContent+`;MODE=${$('mode').value};R=1;setWeights(${JSON.stringify(getW())});
+  const code=$('engine').textContent+`;MODE=${$('mode').value};SHAPE=${$('shape').value};R=1;setWeights(${JSON.stringify(getW())});
    const b=Int8Array.from(${JSON.stringify(board)});b[${idx}]=-1;const m=new Uint8Array(25);
    const em=gravity(b,m);for(const i of em)b[i]=draw();const [rm]=cascade(b,m);[Array.from(b),1+rm]`;
   const [nb,rm]=(0,eval)(code);
@@ -300,7 +317,7 @@ function run(){
   $('go').disabled=true;$('pg').style.width='0';$('st').textContent='計算中…';
   const H=+$('depth').value,t0=performance.now();
   const src=$('engine').textContent+`
-  onmessage=e=>{const d=e.data;MODE=d.mode;R=d.R;setWeights(d.w);rng=mulberry32(12345);
+  onmessage=e=>{const d=e.data;MODE=d.mode;SHAPE=d.shape;R=d.R;setWeights(d.w);rng=mulberry32(12345);
    const res=analyze(Int8Array.from(d.board),d.H,n=>postMessage({prog:n}));postMessage({res});};
   `;
   worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
@@ -312,7 +329,7 @@ function run(){
     render();showResults();
   };
   worker.onerror=e=>{$('go').disabled=false;$('st').textContent='錯誤:'+e.message;};
-  worker.postMessage({board,H,mode:+$('mode').value,R:Math.max(1,+$('rs').value||1),w:getW()});
+  worker.postMessage({board,H,mode:+$('mode').value,shape:+$('shape').value,R:Math.max(1,+$('rs').value||1),w:getW()});
 }
 $('go').onclick=run;
 $('clr').onclick=()=>{results=null;$('res').innerHTML='';$('hint').textContent='按「計算」後顯示排名。';render();};
