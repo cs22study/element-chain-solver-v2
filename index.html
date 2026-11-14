@@ -6,7 +6,7 @@
 <title>元素連鎖 最佳點擊計算機</title>
 <style>
 :root{--bg:#14161f;--panel:#1e2130;--line:#33384d;--tx:#e8eaf3;--mut:#8b91a8;
- --e0:#3b82f6;--e1:#f97316;--e2:#22c55e;--e3:#eab308;--e4:#a855f7;--acc:#f5c451}
+ --e0:#3b82f6;--e1:#e53935;--e2:#22c55e;--e3:#eab308;--e4:#a855f7;--acc:#f5c451}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,"Microsoft JhengHei",sans-serif}
 .wrap{max-width:980px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:minmax(300px,420px) 1fr}
@@ -516,7 +516,7 @@ function redrawShot(){
   cv.width=cw;cv.height=Math.round(shot.h*sc);
   const g=cv.getContext('2d');g.drawImage(shot.full,0,0,cv.width,cv.height);
   const unk=recognize();
-  const [px,py]=pitch(),R=shot.rect,COL=['#3b82f6','#f97316','#22c55e','#eab308','#a855f7'];
+  const [px,py]=pitch(),R=shot.rect,COL=['#3b82f6','#e53935','#22c55e','#eab308','#a855f7'];
   g.lineWidth=2;g.font='bold 15px sans-serif';g.textAlign='center';g.textBaseline='middle';
   for(let r=0;r<5;r++)for(let c=0;c<5;c++){
     const e=shot.cells[r*5+c],x=(R.x0+c*px)*sc,y=(R.y0+r*py)*sc,w=CARD*px*sc,h=CARD*py*sc;
