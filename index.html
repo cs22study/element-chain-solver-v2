@@ -25,6 +25,13 @@ h1{font-size:18px;margin:0 0 4px}
 .cell.r1{border-color:#fff;box-shadow:0 0 12px #fff8}
 .cell.r2,.cell.r3{border-color:var(--acc)}
 .c0{background:var(--e0)}.c1{background:var(--e1)}.c2{background:var(--e2)}.c3{background:var(--e3);color:#222}.c4{background:var(--e4)}
+/* 模擬動畫舞台:卡片用絕對定位,靠 top 的 transition 做掉落 */
+.grid.stage{display:block;position:relative;aspect-ratio:1;overflow:hidden;--cs:calc((100% - 24px)/5)}
+.tile{position:absolute;width:var(--cs);height:var(--cs);aspect-ratio:auto;cursor:default;
+ left:calc(var(--c)*(var(--cs) + 6px));top:calc(var(--r)*(var(--cs) + 6px));
+ transition:top var(--fall,.5s) cubic-bezier(.45,0,.9,.55)}
+.tile.pop{animation:pop var(--popd,.45s) ease-out forwards;z-index:2}
+@keyframes pop{0%{transform:scale(1);filter:brightness(1)}35%{transform:scale(1.18);filter:brightness(2.2)}100%{transform:scale(0);opacity:0}}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
 label{font-size:13px;color:var(--mut)}
 select,input{background:#10121a;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:14px}
@@ -65,6 +72,11 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
    <div class="row">
     <label>搜尋深度(最多連點幾下) <select id="depth">
      <option value="1">1</option><option value="2" selected>2</option><option value="3">3(較慢)</option><option value="4">4(很慢)</option>
+    </select></label>
+   </div>
+   <div class="row">
+    <label>模擬動畫速度 <select id="speed">
+     <option value="1.6">慢</option><option value="1" selected>中</option><option value="0.5">快</option><option value="0.15">極快</option>
     </select></label>
    </div>
    <div class="row">
@@ -284,15 +296,84 @@ function showResults(){
   const b=results[order[0]];
   $('hint').textContent=`建議先點 第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]}),規劃 ${b.bestH} 下,期望 ${b.best.toFixed(2)} 張/下。`;
 }
-function simulate(){ // 照一般規則跑一次隨機結果,方便預覽
-  const order=rank(),idx=order[0];
-  const code=$('engine').textContent+`;MODE=${$('mode').value};R=1;setWeights(${JSON.stringify(getW())});
-   const b=Int8Array.from(${JSON.stringify(board)});b[${idx}]=-1;const m=new Uint8Array(25);
-   const em=gravity(b,m);for(const i of em)b[i]=draw();const [rm]=cascade(b,m);[Array.from(b),1+rm]`;
-  const [nb,rm]=(0,eval)(code);
-  board=nb;results=null;$('res').innerHTML='';
-  $('hint').textContent=`模擬:點了第${Math.floor(idx/5)+1}列第${idx%5+1}行,共消除 ${rm} 張。實際遊戲請照新盤面重新輸入。`;
-  render();
+// 在主執行緒也載入一份引擎,用來產生模擬動畫的每一步
+let ENG=null;
+function engine(){
+  if(!ENG)ENG=new Function($('engine').textContent+";return {setMode:m=>{MODE=m},setW:setWeights,clearGroups,draw}")();
+  return ENG;
+}
+// 回傳 steps:clear(消除哪些卡)與 fall(哪些卡下移、哪些新卡從上方掉入)交替
+function buildSteps(start,idx){
+  const E=engine();E.setMode(+$('mode').value);E.setW(getW());
+  const b=Int8Array.from(start),ids=[...Array(25).keys()],colorOf=new Map();
+  start.forEach((c,i)=>colorOf.set(i,c));
+  let nid=25,toClear=[idx];const steps=[];let total=0;
+  for(let round=0;round<60;round++){
+    steps.push({type:'clear',round,ids:toClear.map(i=>ids[i])});
+    total+=toClear.length;
+    toClear.forEach(i=>{b[i]=-1;ids[i]=null;});
+    const moves=[],spawns=[],moved=new Uint8Array(25);
+    for(let c=0;c<5;c++){
+      let w=4;
+      for(let r=4;r>=0;r--){
+        const i=r*5+c;
+        if(ids[i]==null)continue;
+        if(w!==r){const j=w*5+c;ids[j]=ids[i];b[j]=b[i];ids[i]=null;b[i]=-1;moved[j]=1;moves.push({id:ids[j],row:w,col:c});}
+        w--;
+      }
+      for(let r=w;r>=0;r--){
+        const j=r*5+c,color=E.draw(),id=nid++;
+        ids[j]=id;b[j]=color;moved[j]=1;colorOf.set(id,color);
+        spawns.push({id,color,col:c,from:r-(w+1),row:r});
+      }
+    }
+    steps.push({type:'fall',moves,spawns});
+    const t=Int8Array.from(b);
+    if(!E.clearGroups(t,moved))break;
+    toClear=[];for(let i=0;i<25;i++)if(b[i]>=0&&t[i]<0)toClear.push(i);
+  }
+  return {steps,total,final:Array.from(b),colorOf};
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let animating=false;
+async function animate(start,idx){
+  if(animating)return;animating=true;
+  const btn=$('sim');if(btn)btn.disabled=true;$('go').disabled=true;
+  const sp=+$('speed').value;
+  const {steps,total,final,colorOf}=buildSteps(start,idx);
+  const g=$('grid');g.innerHTML='';g.classList.add('stage');
+  g.style.setProperty('--fall',(0.5*sp)+'s');g.style.setProperty('--popd',(0.45*sp)+'s');
+  const els=new Map();
+  const place=(el,row,col)=>{el.style.setProperty('--r',row);el.style.setProperty('--c',col);};
+  const mk=(color,row,col)=>{const el=document.createElement('div');el.className='cell tile c'+color;el.textContent=NAMES[color];place(el,row,col);g.appendChild(el);return el;};
+  start.forEach((c,i)=>els.set(i,mk(c,Math.floor(i/5),i%5)));
+  const pos=i=>`第${Math.floor(i/5)+1}列第${i%5+1}行`;
+  $('hint').textContent=`點擊 ${pos(idx)}(${NAMES[start[idx]]})…`;
+  let cum=0;
+  await sleep(350*sp);
+  for(const st of steps){
+    if(st.type==='clear'){
+      st.ids.forEach(id=>els.get(id).classList.add('pop'));
+      cum+=st.ids.length;
+      $('hint').textContent=st.round===0?`點擊 ${pos(idx)}(${NAMES[start[idx]]})`:`連鎖 ${st.round}:消除 ${st.ids.length} 張,累計 ${cum} 張`;
+      await sleep(450*sp+80);
+      st.ids.forEach(id=>{els.get(id).remove();els.delete(id);});
+    }else{
+      for(const s of st.spawns)els.set(s.id,mk(s.color,s.from,s.col));
+      void g.offsetWidth; // 先讓新卡在上方定位,再改位置才會有掉落動畫
+      for(const m of st.moves)place(els.get(m.id),m.row,m.col);
+      for(const s of st.spawns)place(els.get(s.id),s.row,s.col);
+      await sleep(500*sp+120);
+    }
+  }
+  g.classList.remove('stage');
+  board=final;results=null;$('res').innerHTML='';
+  $('hint').textContent=`模擬:點了${pos(idx)},共消除 ${total} 張(連鎖 ${steps.filter(s=>s.type==='clear').length-1} 輪)。實際遊戲請照新盤面重新輸入。`;
+  render();$('go').disabled=false;animating=false;
+}
+function simulate(){ // 照一般規則跑一次隨機結果並播放動畫
+  const idx=rank()[0];
+  animate(board.slice(),idx);
 }
 function getW(){return [...document.querySelectorAll('#wts input')].map(x=>Math.max(0,+x.value||0));}
 
