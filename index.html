@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>元素連鎖 最佳點擊計算機</title>
+<style>
+:root{--bg:#14161f;--panel:#1e2130;--line:#33384d;--tx:#e8eaf3;--mut:#8b91a8;
+ --e0:#3b82f6;--e1:#f97316;--e2:#22c55e;--e3:#eab308;--e4:#a855f7;--acc:#f5c451}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,"Microsoft JhengHei",sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:minmax(300px,420px) 1fr}
+@media(max-width:820px){.wrap{grid-template-columns:1fr}}
+h1{font-size:18px;margin:0 0 4px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.mut{color:var(--mut);font-size:13px}
+.palette{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
+.pal{flex:1;min-width:52px;padding:8px 0;border-radius:8px;border:2px solid transparent;color:#fff;font-weight:700;cursor:pointer;font-size:15px}
+.pal.on{border-color:#fff;box-shadow:0 0 0 2px #0008 inset}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
+.cell{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ color:#fff;font-weight:800;font-size:22px;cursor:pointer;position:relative;user-select:none;border:3px solid transparent}
+.cell small{font-size:12px;font-weight:600;opacity:.95;line-height:1.1}
+.cell .rk{position:absolute;top:2px;left:5px;font-size:12px;font-weight:800}
+.cell.r1{border-color:#fff;box-shadow:0 0 12px #fff8}
+.cell.r2,.cell.r3{border-color:var(--acc)}
+.c0{background:var(--e0)}.c1{background:var(--e1)}.c2{background:var(--e2)}.c3{background:var(--e3);color:#222}.c4{background:var(--e4)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+label{font-size:13px;color:var(--mut)}
+select,input{background:#10121a;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:14px}
+input.w{width:54px}
+button.btn{background:var(--acc);color:#222;border:0;border-radius:8px;padding:9px 16px;font-weight:700;font-size:15px;cursor:pointer}
+button.sec{background:#2b3047;color:var(--tx)}
+button:disabled{opacity:.5;cursor:wait}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:6px 5px;text-align:center;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600;font-size:12px}
+.bar{height:6px;background:#10121a;border-radius:3px;overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;background:var(--acc)}
+.prog{height:4px;background:#10121a;border-radius:2px;margin-top:10px;overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s}
+.hs{font-size:12px;color:var(--mut)}
+.hs b{color:var(--tx)}
+details{margin-top:10px}summary{cursor:pointer;color:var(--mut);font-size:13px}
+ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="panel">
+  <h1>元素連鎖 · 最佳點擊計算機</h1>
+  <div class="mut">先選屬性筆刷,再點格子把面板填成和遊戲一致(左上為第 1 列第 1 行)。</div>
+  <div class="palette" id="pal"></div>
+  <div class="grid" id="grid"></div>
+  <div class="row">
+   <button class="btn" id="go">計算</button>
+   <button class="btn sec" id="rnd">隨機盤面</button>
+   <button class="btn sec" id="clr">清除結果</button>
+  </div>
+  <div class="prog"><i id="pg"></i></div>
+  <div class="mut" id="st" style="margin-top:6px"></div>
+
+  <details open>
+   <summary>參數</summary>
+   <div class="row">
+    <label>搜尋深度(最多連點幾下) <select id="depth">
+     <option value="1">1</option><option value="2" selected>2</option><option value="3">3(較慢)</option><option value="4">4(很慢)</option>
+    </select></label>
+   </div>
+   <div class="row">
+    <label>連鎖判定 <select id="mode">
+     <option value="1">只看「有移動/新補」卡片所在的相連群組</option>
+     <option value="0">每次掉落後全盤檢查</option>
+    </select></label>
+   </div>
+   <div class="row">
+    <label>連鎖隨機取樣次數 <input class="w" id="rs" type="number" min="1" max="20" value="4"></label>
+   </div>
+   <div class="row"><label>補牌機率權重</label>
+    <span id="wts"></span>
+   </div>
+  </details>
+  <details>
+   <summary>計算方式與假設</summary>
+   <ul>
+    <li>點一張只消除那一張 → 上方下落 → 空位隨機補滿 → 3 張以上上下左右相連者自動消除,重複到沒有為止。</li>
+    <li>分數 = 總消除張數 ÷ 點擊數。每一步都假設你看到新盤面後再選最佳點(適應性策略),補牌是隨機的,所以算的是期望值。</li>
+    <li>對每個起手點,計算「接下來連點 h 下」的最大期望消除數,h 取 1~深度,取 期望/h 最高者;這就包含「先佈局、最後才爆」的情況。</li>
+    <li>點下去補牌後盤面會變,建議每點一下就把新盤面輸入重算。</li>
+    <li>第一步的補牌結果為精確枚舉;連鎖過程中的補牌為隨機取樣,深度越大誤差/耗時越大。</li>
+   </ul>
+  </details>
+ </div>
+
+ <div class="panel">
+  <h1>推薦起手點</h1>
+  <div class="mut" id="hint">按「計算」後顯示排名。</div>
+  <div id="res"></div>
+ </div>
+</div>
+
+<script type="text/plain" id="engine">
+const N=5,CELLS=25,K=5;
+let MODE=1,R=4,weights=[.2,.2,.2,.2,.2],cum=[.2,.4,.6,.8,1];
+let rng=Math.random;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function setWeights(w){const s=w.reduce((a,b)=>a+b,0);weights=w.map(x=>x/s);cum=[];let c=0;for(const x of weights){c+=x;cum.push(c)}}
+function draw(){const r=rng();for(let i=0;i<K;i++)if(r<cum[i])return i;return K-1}
+
+// 重力:把 -1 的空格往上擠,回傳空格位置;moved 標記有位移/新補的格
+function gravity(b,moved){
+  const empties=[];
+  for(let c=0;c<N;c++){
+    let w=N-1;
+    for(let r=N-1;r>=0;r--){
+      const v=b[r*N+c];
+      if(v>=0){ if(w!==r){b[w*N+c]=v;moved[w*N+c]=1;} w--; }
+    }
+    for(let r=w;r>=0;r--){b[r*N+c]=-1;moved[r*N+c]=1;empties.push(r*N+c);}
+  }
+  return empties;
+}
+const stack=new Int8Array(CELLS),seen=new Uint8Array(CELLS),grp=new Int8Array(CELLS);
+function clearGroups(b,moved){
+  seen.fill(0);let total=0;
+  for(let s=0;s<CELLS;s++){
+    if(seen[s]||b[s]<0)continue;
+    const v=b[s];let sp=0,gn=0,hasMoved=false;
+    stack[sp++]=s;seen[s]=1;
+    while(sp){
+      const p=stack[--sp];grp[gn++]=p;if(moved[p])hasMoved=true;
+      const r=(p/N)|0,c=p%N;
+      if(r>0){const q=p-N;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
+      if(r<N-1){const q=p+N;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
+      if(c>0){const q=p-1;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
+      if(c<N-1){const q=p+1;if(!seen[q]&&b[q]===v){seen[q]=1;stack[sp++]=q;}}
+    }
+    if(gn>=3&&(MODE===0||hasMoved)){ for(let i=0;i<gn;i++)grp[i]>=0&&(b[grp[i]]=-2); total+=gn; }
+  }
+  // -2 暫存「待消除」,避免影響同輪其他群組判斷
+  for(let i=0;i<CELLS;i++)if(b[i]===-2)b[i]=-1;
+  return total;
+}
+function cascade(b,moved){
+  let removed=0,rnd=false;
+  for(;;){
+    const n=clearGroups(b,moved);
+    if(!n)break;
+    removed+=n;moved.fill(0);
+    const em=gravity(b,moved);
+    for(const i of em)b[i]=draw();
+    rnd=true;
+  }
+  return [removed,rnd];
+}
+// 點下 idx,回傳所有結果 [{p,board,removed}](removed 含被點的那張)
+function expand(board,idx,R){
+  const b=Uint8Array.from(board);const bb=new Int8Array(CELLS);for(let i=0;i<CELLS;i++)bb[i]=b[i];
+  bb[idx]=-1;
+  const moved0=new Uint8Array(CELLS);
+  const empties=gravity(bb,moved0);
+  const n=empties.length;
+  const fills=[];
+  if(n<=2){
+    const tot=Math.pow(K,n);
+    for(let code=0;code<tot;code++){
+      let p=1,x=code;const f=[];
+      for(let i=0;i<n;i++){const d=x%K;x=(x/K)|0;f.push(d);p*=weights[d];}
+      if(p>0)fills.push([p,f]);
+    }
+  }else{
+    const S=20;
+    for(let s=0;s<S;s++){const f=[];for(let i=0;i<n;i++)f.push(draw());fills.push([1/S,f]);}
+  }
+  const map=new Map();
+  const add=(p,bd,rm)=>{
+    const key=rm+'|'+bd.join('');
+    const e=map.get(key);
+    if(e)e.p+=p;else map.set(key,{p,board:Uint8Array.from(bd),removed:rm});
+  };
+  for(const [p,f] of fills){
+    const b2=Int8Array.from(bb),m2=Uint8Array.from(moved0);
+    for(let i=0;i<n;i++)b2[empties[i]]=f[i];
+    const b3=Int8Array.from(b2),m3=Uint8Array.from(m2);
+    const [rm,rnd]=cascade(b3,m3);
+    if(!rnd){add(p,b3,1+rm);continue;}
+    add(p/R,b3,1+rm);
+    for(let k=1;k<R;k++){
+      const b4=Int8Array.from(b2),m4=Uint8Array.from(m2);
+      const [rm2]=cascade(b4,m4);
+      add(p/R,b4,1+rm2);
+    }
+  }
+  return [...map.values()];
+}
+const memo=new Map();
+// vals(board,H)[h] = 連點 h 下(1..H)能得到的最大期望總消除數
+function vals(board,H){
+  const key=H+':'+board.join('');
+  const got=memo.get(key);if(got)return got;
+  const best=new Float64Array(H+1);
+  for(let a=0;a<CELLS;a++){
+    const outs=expand(board,a,1);
+    const q=new Float64Array(H+1);
+    for(const o of outs){
+      const ch=H>1?vals(o.board,H-1):null;
+      for(let h=1;h<=H;h++)q[h]+=o.p*(o.removed+(h>1?ch[h-1]:0));
+    }
+    for(let h=1;h<=H;h++)if(q[h]>best[h])best[h]=q[h];
+  }
+  memo.set(key,best);return best;
+}
+function analyze(board,H,cb){
+  memo.clear();const res=[];
+  for(let a=0;a<CELLS;a++){
+    const outs=expand(board,a,R);
+    const q=new Float64Array(H+1);let pc=0,maxRm=0;
+    for(const o of outs){
+      const ch=H>1?vals(o.board,H-1):null;
+      for(let h=1;h<=H;h++)q[h]+=o.p*(o.removed+(h>1?ch[h-1]:0));
+      if(o.removed>1)pc+=o.p;
+      if(o.removed>maxRm)maxRm=o.removed;
+    }
+    res.push({idx:a,q:Array.from(q),pc,maxRm});
+    cb&&cb(a+1);
+  }
+  return res;
+}
+</script>
+
+<script>
+const NAMES=['水','火','木','光','暗'];
+let board=[
+ 4,4,2,3,4,
+ 4,4,3,2,2,
+ 3,3,2,4,1,
+ 0,4,0,2,2,
+ 2,4,0,0,1];
+let brush=4,results=null,worker=null;
+const $=id=>document.getElementById(id);
+
+// 調色盤
+const pal=$('pal');
+NAMES.forEach((n,i)=>{const b=document.createElement('button');b.className='pal c'+i+(i===brush?' on':'');b.textContent=n;
+ b.onclick=()=>{brush=i;[...pal.children].forEach((x,j)=>x.classList.toggle('on',j===i));};pal.appendChild(b);});
+// 權重
+NAMES.forEach((n,i)=>{const s=document.createElement('span');s.innerHTML=`<label>${n}</label><input class="w" type="number" min="0" step="0.05" value="1" data-i="${i}"> `;$('wts').appendChild(s);});
+
+function rank(){ // 排名 index -> rank
+  if(!results)return null;
+  return results.slice().sort((a,b)=>b.best-a.best).map(r=>r.idx);
+}
+function render(){
+  const g=$('grid');g.innerHTML='';
+  const order=rank();
+  for(let i=0;i<25;i++){
+    const d=document.createElement('div');d.className='cell c'+board[i];
+    let inner=NAMES[board[i]];
+    if(results){
+      const r=order.indexOf(i)+1,x=results[i];
+      d.classList.add(r===1?'r1':r<=3?'r2':'x');
+      inner=`<span class="rk">#${r}</span>${NAMES[board[i]]}<small>${x.best.toFixed(2)}</small>`;
+    }
+    d.innerHTML=inner;
+    d.onclick=()=>{board[i]=brush;results=null;$('res').innerHTML='';$('hint').textContent='盤面已變更,請重新計算。';render();};
+    g.appendChild(d);
+  }
+}
+function showResults(){
+  const order=rank();const top=results[order[0]].best||1;
+  let h='<table><tr><th>#</th><th>位置</th><th>屬性</th><th>期望分數<br>消除/點擊</th><th>最佳連點數</th><th>此下直接連鎖率</th></tr>';
+  order.slice(0,10).forEach((idx,k)=>{
+    const x=results[idx],r=Math.floor(idx/5)+1,c=idx%5+1;
+    const per=x.q.slice(1).map((v,i)=>`<b>${i+1}下</b> ${(v/(i+1)).toFixed(2)}`).join(' · ');
+    h+=`<tr><td>${k+1}</td><td>第${r}列 第${c}行</td><td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
+    <td><b>${x.best.toFixed(2)}</b><div class="bar"><i style="width:${(x.best/top*100).toFixed(0)}%"></i></div></td>
+    <td>${x.bestH}</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
+    <tr><td></td><td colspan="5" class="hs" style="text-align:left">${per}</td></tr>`;
+  });
+  h+='</table><div class="row"><button class="btn sec" id="sim">模擬點擊 #1(隨機補牌)</button></div>';
+  $('res').innerHTML=h;
+  $('sim').onclick=simulate;
+  const b=results[order[0]];
+  $('hint').textContent=`建議先點 第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]}),規劃 ${b.bestH} 下,期望 ${b.best.toFixed(2)} 張/下。`;
+}
+function simulate(){ // 照一般規則跑一次隨機結果,方便預覽
+  const order=rank(),idx=order[0];
+  const code=$('engine').textContent+`;MODE=${$('mode').value};R=1;setWeights(${JSON.stringify(getW())});
+   const b=Int8Array.from(${JSON.stringify(board)});b[${idx}]=-1;const m=new Uint8Array(25);
+   const em=gravity(b,m);for(const i of em)b[i]=draw();const [rm]=cascade(b,m);[Array.from(b),1+rm]`;
+  const [nb,rm]=(0,eval)(code);
+  board=nb;results=null;$('res').innerHTML='';
+  $('hint').textContent=`模擬:點了第${Math.floor(idx/5)+1}列第${idx%5+1}行,共消除 ${rm} 張。實際遊戲請照新盤面重新輸入。`;
+  render();
+}
+function getW(){return [...document.querySelectorAll('#wts input')].map(x=>Math.max(0,+x.value||0));}
+
+function run(){
+  if(worker)worker.terminate();
+  $('go').disabled=true;$('pg').style.width='0';$('st').textContent='計算中…';
+  const H=+$('depth').value,t0=performance.now();
+  const src=$('engine').textContent+`
+  onmessage=e=>{const d=e.data;MODE=d.mode;R=d.R;setWeights(d.w);rng=mulberry32(12345);
+   const res=analyze(Int8Array.from(d.board),d.H,n=>postMessage({prog:n}));postMessage({res});};
+  `;
+  worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+  worker.onmessage=e=>{
+    if(e.data.prog){$('pg').style.width=(e.data.prog/25*100)+'%';return;}
+    results=e.data.res.map(x=>{let bh=1,bs=-1;for(let h=1;h<=H;h++){const s=x.q[h]/h;if(s>bs){bs=s;bh=h;}}x.best=bs;x.bestH=bh;return x;});
+    $('go').disabled=false;$('pg').style.width='100%';
+    $('st').textContent=`完成,用時 ${((performance.now()-t0)/1000).toFixed(1)} 秒`;
+    render();showResults();
+  };
+  worker.onerror=e=>{$('go').disabled=false;$('st').textContent='錯誤:'+e.message;};
+  worker.postMessage({board,H,mode:+$('mode').value,R:Math.max(1,+$('rs').value||1),w:getW()});
+}
+$('go').onclick=run;
+$('clr').onclick=()=>{results=null;$('res').innerHTML='';$('hint').textContent='按「計算」後顯示排名。';render();};
+$('rnd').onclick=()=>{board=board.map(()=>Math.floor(Math.random()*5));results=null;$('res').innerHTML='';render();};
+render();
+</script>
+</body>
+</html>
