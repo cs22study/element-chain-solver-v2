@@ -532,13 +532,13 @@ function recognize(){
   }
   return unk;
 }
-function redrawShot(){
+function redrawShot(apply=true){
   if(!shot)return;
   const cv=$('cv'),box=$('cvbox');
   const cw=Math.max(200,box.clientWidth||400),sc=cw/shot.w;
   cv.width=cw;cv.height=Math.round(shot.h*sc);
   const g=cv.getContext('2d');g.drawImage(shot.full,0,0,cv.width,cv.height);
-  const unk=recognize();
+  const unk=apply?recognize():0;
   const [px,py]=pitch(),R=shot.rect,COL=['#3b82f6','#e53935','#22c55e','#eab308','#a855f7'];
   g.lineWidth=2;g.font='bold 15px sans-serif';g.textAlign='center';g.textBaseline='middle';
   for(let r=0;r<5;r++)for(let c=0;c<5;c++){
@@ -550,6 +550,7 @@ function redrawShot(){
   for(const [hx,hy] of [[R.x0,R.y0],[R.x1,R.y1]]){
     g.fillStyle='#fff';g.strokeStyle='#000';g.beginPath();g.arc(hx*sc,hy*sc,8,0,7);g.fill();g.stroke();
   }
+  if(!apply)return; // 只是視窗大小改變(例如手機捲動收起網址列),不動盤面與計算結果
   // 套用到盤面
   board=board.map((v,i)=>shot.cells[i]>=0?shot.cells[i]:v);
   results=null;$('res').innerHTML='';$('hint').textContent='已由截圖更新盤面,請按「計算」。'+((!shot.auto||unk)?'(辨識可能有誤,請展開「截圖辨識」檢查)':'');
@@ -576,7 +577,7 @@ function redrawShot(){
   });
   const end=()=>{drag=null;};
   cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
-  window.addEventListener('resize',()=>redrawShot());
+  window.addEventListener('resize',()=>redrawShot(false));
   $('redet').onclick=()=>{
     if(!shot)return;const a=detectGrid(shot.full);shot.auto=!!a;
     if(a)shot.rect={x0:a.x0,y0:a.y0,x1:a.x1,y1:a.y1};
