@@ -252,12 +252,17 @@ function render(){
   const g=$('grid');g.innerHTML='';g.classList.remove('stage');
   if(simShown){simShown=false;setSimBtn();}
   const order=rank();
+  let lo=0,hi=1;
+  if(results){const bs=results.map(x=>x.best);lo=Math.min(...bs);hi=Math.max(...bs);}
   for(let i=0;i<25;i++){
     const d=document.createElement('div');d.className='cell c'+board[i];
     let inner=NAMES[board[i]];
     if(results){
       const r=order.indexOf(i)+1,x=results[i];
       d.classList.add(r===1?'r1':r<=3?'r2':'x');
+      // 期望分數越高越鮮亮,越低越灰暗
+      const t=hi>lo?(x.best-lo)/(hi-lo):1;
+      d.style.filter=`saturate(${(0.05+0.95*t).toFixed(2)}) brightness(${(0.5+0.5*t).toFixed(2)})`;
       inner=`<span class="rk">#${r}</span>${NAMES[board[i]]}<small>${x.best.toFixed(2)}</small>`;
     }
     d.innerHTML=inner;
