@@ -50,6 +50,7 @@ th{color:var(--mut);font-weight:600;font-size:12px}
 .hs b{color:var(--tx)}
 details{margin-top:10px}summary{cursor:pointer;color:var(--mut);font-size:13px}
 ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
+#cv{width:100%;touch-action:none;border-radius:8px;margin-top:8px;display:block;cursor:crosshair}
 </style>
 </head>
 <body>
@@ -62,9 +63,18 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
   <div class="row">
    <button class="btn" id="go">計算</button>
    <button class="btn sec" id="clr">清除結果</button>
+   <button class="btn sec" id="up">📷 上傳截圖</button>
+   <input type="file" id="file" accept="image/*" hidden>
   </div>
   <div class="prog"><i id="pg"></i></div>
   <div class="mut" id="st" style="margin-top:6px"></div>
+
+  <details id="shot">
+   <summary>截圖辨識(可上傳、拖曳或 Ctrl+V 貼上)</summary>
+   <div class="mut" style="margin-top:6px">拖動畫面上的框,讓格線對準 5×5 卡片(拖角落調整大小、拖框內移動)。辨識依每張卡左上角的屬性色塊,框一移動就會即時更新盤面。</div>
+   <div id="cvbox" style="display:none"><canvas id="cv"></canvas></div>
+   <div class="mut" id="shotmsg"></div>
+  </details>
 
   <details open>
    <summary>參數</summary>
@@ -396,6 +406,112 @@ function run(){
   worker.postMessage({board,H,mode:+$('mode').value,R:Math.max(1,+$('rs').value||1),w:getW()});
 }
 $('go').onclick=run;
+/* ===== 截圖辨識 ===== */
+const CARD=0.914; // 卡片寬 / 格距(含縫隙)
+function rgb2hsv(r,g,b){
+  r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+  let h=0;if(d){if(mx===r)h=((g-b)/d+6)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;}
+  return [h,mx?d/mx:0,mx];
+}
+// 色相 → 屬性(0水 1火 2木 3光 4暗),不夠鮮豔的回傳 -1
+function classify(r,g,b){
+  const [h,s,v]=rgb2hsv(r,g,b);
+  if(s<0.45||v<0.45)return -1;
+  if(h>=180&&h<245)return 0;
+  if(h>=75&&h<175)return 2;
+  if(h>=38&&h<75)return 3;
+  if(h>=245&&h<340)return 4;
+  return 1;
+}
+let shot=null;
+function loadShot(file){
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{
+    const full=document.createElement('canvas');full.width=img.naturalWidth;full.height=img.naturalHeight;
+    const cx=full.getContext('2d',{willReadFrequently:true});cx.drawImage(img,0,0);
+    URL.revokeObjectURL(url);
+    const w=full.width,h=full.height;
+    // 預設框:依這款遊戲手機截圖的版面比例(以寬度為基準)
+    let x0=.1355*w,y0=.796*w,x1=.8645*w,y1=1.5247*w;
+    if(y1>h){const hh=y1-y0;y0=Math.max(0,(h-hh)/2);y1=y0+hh;}
+    shot={full,cx,w,h,rect:{x0,y0,x1,y1},cells:Array(25).fill(-1)};
+    $('shot').open=true;$('cvbox').style.display='block';
+    redrawShot();
+  };
+  img.onerror=()=>{$('shotmsg').textContent='無法讀取這個圖片檔。';};
+  img.src=url;
+}
+function pitch(){const R=shot.rect;return [(R.x1-R.x0)/(4+CARD),(R.y1-R.y0)/(4+CARD)];}
+function recognize(){
+  const [px,py]=pitch(),R=shot.rect,{w,h,cx}=shot;
+  const sw=CARD*px,sh=CARD*py;let unk=0;
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+    const x=R.x0+c*px,y=R.y0+r*py;
+    const ax=Math.max(0,Math.round(x+.02*sw)),bx=Math.min(w,Math.round(x+.32*sw));
+    const ay=Math.max(0,Math.round(y+.02*sh)),by=Math.min(h,Math.round(y+.26*sh));
+    const v=[0,0,0,0,0];let n=0;
+    if(bx>ax&&by>ay){
+      const d=cx.getImageData(ax,ay,bx-ax,by-ay).data;
+      for(let i=0;i<d.length;i+=4){n++;const e=classify(d[i],d[i+1],d[i+2]);if(e>=0)v[e]++;}
+    }
+    let best=0;for(let e=1;e<5;e++)if(v[e]>v[best])best=e;
+    shot.cells[r*5+c]=(n&&v[best]/n>=0.08)?best:-1;
+    if(shot.cells[r*5+c]<0)unk++;
+  }
+  return unk;
+}
+function redrawShot(){
+  if(!shot)return;
+  const cv=$('cv'),box=$('cvbox');
+  const cw=Math.max(200,box.clientWidth||400),sc=cw/shot.w;
+  cv.width=cw;cv.height=Math.round(shot.h*sc);
+  const g=cv.getContext('2d');g.drawImage(shot.full,0,0,cv.width,cv.height);
+  const unk=recognize();
+  const [px,py]=pitch(),R=shot.rect,COL=['#3b82f6','#f97316','#22c55e','#eab308','#a855f7'];
+  g.lineWidth=2;g.font='bold 15px sans-serif';g.textAlign='center';g.textBaseline='middle';
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+    const e=shot.cells[r*5+c],x=(R.x0+c*px)*sc,y=(R.y0+r*py)*sc,w=CARD*px*sc,h=CARD*py*sc;
+    g.strokeStyle=e<0?'#ff3355':COL[e];g.strokeRect(x,y,w,h);
+    g.fillStyle=e<0?'#ff3355':COL[e];g.fillRect(x+w*.35,y+h*.35,w*.3,h*.3);
+    g.fillStyle=e===3?'#222':'#fff';g.fillText(e<0?'?':NAMES[e],x+w*.5,y+h*.5);
+  }
+  for(const [hx,hy] of [[R.x0,R.y0],[R.x1,R.y1]]){
+    g.fillStyle='#fff';g.strokeStyle='#000';g.beginPath();g.arc(hx*sc,hy*sc,8,0,7);g.fill();g.stroke();
+  }
+  // 套用到盤面
+  board=board.map((v,i)=>shot.cells[i]>=0?shot.cells[i]:v);
+  results=null;$('res').innerHTML='';$('hint').textContent='已由截圖更新盤面,請按「計算」。';
+  $('shotmsg').textContent=unk?`有 ${unk} 格無法辨識(紅色「?」,沿用原本的值),請調整框或用筆刷手動修正。`:'25 格都已辨識。若有錯誤,可微調框或用筆刷修正。';
+  render();
+}
+(function(){
+  const cv=$('cv');let drag=null;
+  const pt=e=>{const b=cv.getBoundingClientRect(),sc=shot.w/b.width;return [(e.clientX-b.left)*sc,(e.clientY-b.top)*sc,sc];};
+  cv.addEventListener('pointerdown',e=>{
+    if(!shot)return;const [x,y,sc]=pt(e),R=shot.rect,rad=22*sc;
+    const d0=Math.hypot(x-R.x0,y-R.y0),d1=Math.hypot(x-R.x1,y-R.y1);
+    if(d0<rad&&d0<=d1)drag={k:'tl'};else if(d1<rad)drag={k:'br'};
+    else if(x>R.x0&&x<R.x1&&y>R.y0&&y<R.y1)drag={k:'mv',ox:x-R.x0,oy:y-R.y0};
+    if(drag){cv.setPointerCapture(e.pointerId);e.preventDefault();}
+  });
+  let raf=0;
+  cv.addEventListener('pointermove',e=>{
+    if(!drag)return;const [x,y]=pt(e),R=shot.rect;
+    if(drag.k==='tl'){R.x0=Math.min(x,R.x1-50);R.y0=Math.min(y,R.y1-50);}
+    else if(drag.k==='br'){R.x1=Math.max(x,R.x0+50);R.y1=Math.max(y,R.y0+50);}
+    else{const w=R.x1-R.x0,h=R.y1-R.y0;R.x0=x-drag.ox;R.y0=y-drag.oy;R.x1=R.x0+w;R.y1=R.y0+h;}
+    if(!raf)raf=requestAnimationFrame(()=>{raf=0;redrawShot();});
+  });
+  const end=()=>{drag=null;};
+  cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+  window.addEventListener('resize',()=>redrawShot());
+  $('up').onclick=()=>$('file').click();
+  $('file').onchange=e=>{if(e.target.files[0])loadShot(e.target.files[0]);e.target.value='';};
+  document.addEventListener('paste',e=>{for(const it of e.clipboardData.items)if(it.type.startsWith('image/')){loadShot(it.getAsFile());e.preventDefault();break;}});
+  document.addEventListener('dragover',e=>e.preventDefault());
+  document.addEventListener('drop',e=>{e.preventDefault();const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('image/'));if(f)loadShot(f);});
+})();
+
 $('clr').onclick=()=>{results=null;$('res').innerHTML='';$('hint').textContent='按「計算」後顯示排名。';render();};
 render();
 </script>
