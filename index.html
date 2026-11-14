@@ -73,6 +73,12 @@ footer a:hover{color:var(--acc)}
   <div class="prog"><i id="pg"></i></div>
   <div class="mut" id="st" style="margin-top:6px"></div>
 
+  <div class="row">
+   <label>規劃步數上限 <select id="depth">
+    <option value="2">2 步(預設)</option><option value="3">3 步(較慢)</option><option value="4">4 步(很慢,可能要數分鐘)</option>
+   </select></label>
+  </div>
+
   <details id="shot">
    <summary>截圖辨識(可上傳、拖曳或 Ctrl+V 貼上)</summary>
    <div class="mut" style="margin-top:6px">拖動畫面上的框,讓格線對準 5×5 卡片(拖角落調整大小、拖框內移動)。辨識依每張卡左上角的屬性色塊,框一移動就會即時更新盤面。</div>
@@ -85,10 +91,10 @@ footer a:hover{color:var(--acc)}
    <summary>計算方式與假設</summary>
    <ul>
     <li>點一張只消除那一張 → 上方下落 → 空位隨機補滿 → 橫向或直向連續 3 張以上同屬性者自動消除(T 字、十字、L 字等線條交會也一起消),重複到沒有為止。2×2 方塊這類沒有 3 連線的不算。</li>
-    <li>分數 = 總消除張數 ÷ 點擊數。每一步都假設你看到新盤面後再選最佳點(適應性策略),補牌是隨機的,所以算的是期望值。</li>
-    <li>對每個起手點,計算「接下來連點 1 或 2 下」的最大期望消除數,取 期望/點擊數 較高者;這就包含「先佈局、最後才爆」的情況。</li>
+    <li>分數 = 總消除張數 ÷ 步數(每一步點一下)。每一步都假設你看到新盤面後再選最佳點(適應性策略),補牌是隨機的,所以算的是期望值。</li>
+    <li>對每個起手點,計算「接下來規劃 1 ~ 「規劃步數上限」步」的最大期望消除數,取 期望/步數 最高者;這就包含「先佈局、最後才爆」的情況。「規劃步數上限」越高越慢,3 步以上在手機上可能要數十秒。</li>
     <li>點下去補牌後盤面會變,建議每點一下就把新盤面輸入重算。</li>
-    <li>第一步的補牌結果為精確枚舉;連鎖過程中的補牌為隨機取樣(每個連鎖分支模擬 100 次),所以分數是估計值,名次接近時可能互換。</li>
+    <li>第一步的補牌結果為精確枚舉;連鎖過程中的補牌為隨機取樣(規劃步數上限為 2 時每個連鎖分支模擬 100 次;3、4 下為了速度大幅減少,誤差較大),所以分數是估計值,名次接近時可能互換。</li>
     <li>為了讓估計偏保守,新補進來的卡片彼此自己連成的線不算,只算跟留在盤面上的卡片相連的線。</li>
    </ul>
   </details>
@@ -280,13 +286,14 @@ function render(){
 // 重新整理後保留盤面與上次的計算結果(只存在這個瀏覽器,不會上傳)
 const SAVE_KEY='element-chain-solver.v1';
 function saveState(){
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({board,results}));}catch(e){}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({board,results,depth:$('depth').value}));}catch(e){}
 }
 function loadState(){
   try{
     const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');
     if(!d||!Array.isArray(d.board)||d.board.length!==25||!d.board.every(v=>Number.isInteger(v)&&v>=0&&v<5))return false;
     board=d.board;
+    if(['2','3','4'].includes(String(d.depth)))$('depth').value=String(d.depth);
     const r=d.results;
     if(Array.isArray(r)&&r.length===25&&r.every(x=>x&&Array.isArray(x.q)&&Number.isFinite(x.best)&&Number.isFinite(x.bestH)))results=r;
     return true;
@@ -294,10 +301,10 @@ function loadState(){
 }
 function showResults(){
   const order=rank();const top=results[order[0]].best||1;
-  let h='<table><tr><th>#</th><th>位置</th><th>屬性</th><th>期望分數<br>消除/點擊</th><th>最佳連點數</th><th>此下直接連鎖率</th></tr>';
+  let h='<table><tr><th>#</th><th>位置</th><th>屬性</th><th>期望分數<br>消除/步</th><th>最佳步數</th><th>第 1 步連鎖率</th></tr>';
   order.slice(0,10).forEach((idx,k)=>{
     const x=results[idx],r=Math.floor(idx/5)+1,c=idx%5+1;
-    const per=x.q.slice(1).map((v,i)=>`<b>${i+1}下</b> ${(v/(i+1)).toFixed(2)}`).join(' · ');
+    const per=x.q.slice(1).map((v,i)=>`<b>${i+1}步</b> ${(v/(i+1)).toFixed(2)}`).join(' · ');
     h+=`<tr><td>${k+1}</td><td>第${r}列 第${c}行</td><td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
     <td><b>${x.best.toFixed(2)}</b><div class="bar"><i style="width:${(x.best/top*100).toFixed(0)}%"></i></div></td>
     <td>${x.bestH}</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
@@ -307,7 +314,7 @@ function showResults(){
   $('res').innerHTML=h;
   setSimBtn();
   const b=results[order[0]];
-  $('hint').textContent=`建議先點 第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]}),規劃 ${b.bestH} 下,期望 ${b.best.toFixed(2)} 張/下。`;
+  $('hint').textContent=`建議先點 第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]}),預計規劃 ${b.bestH} 步,期望 ${b.best.toFixed(2)} 張/步。`;
 }
 // 在主執行緒也載入一份引擎,用來產生模擬動畫的每一步
 let ENG=null;
@@ -393,7 +400,7 @@ function simulate(){ // 播放一次隨機模擬;模擬完按鈕變成「回復�
 function run(){
   if(worker)worker.terminate();
   $('go').disabled=true;$('pg').style.width='0';$('st').textContent='計算中…';
-  const H=2,t0=performance.now();
+  const H=+$('depth').value,t0=performance.now();
   const src=$('engine').textContent+`
   onmessage=e=>{const d=e.data;R=d.R;IGN=d.ign;rng=mulberry32(12345);
    const res=analyze(Int8Array.from(d.board),d.H,n=>postMessage({prog:n}));postMessage({res});};
@@ -407,7 +414,7 @@ function run(){
     render();showResults();
   };
   worker.onerror=e=>{$('go').disabled=false;$('st').textContent='錯誤:'+e.message;};
-  worker.postMessage({board,H,ign:1,R:100});
+  worker.postMessage({board,H,ign:1,R:{2:100,3:4,4:1}[H]});
 }
 $('go').onclick=run;
 /* ===== 截圖辨識 ===== */
@@ -582,6 +589,7 @@ function redrawShot(){
   document.addEventListener('drop',e=>{e.preventDefault();const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('image/'));if(f)loadShot(f);});
 })();
 
+$('depth').onchange=()=>{results=null;$('res').innerHTML='';$('hint').textContent='「規劃步數上限」已變更,請重新計算。';render();};
 $('sim').onclick=simulate;
 const restored=loadState();
 render();
