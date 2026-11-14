@@ -62,7 +62,7 @@ ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--mut)}
   <div class="grid" id="grid"></div>
   <div class="row">
    <button class="btn" id="go">計算</button>
-   <button class="btn sec" id="clr">清除結果</button>
+   <button class="btn sec" id="sim" disabled>模擬點擊 #1(隨機補牌)</button>
    <button class="btn sec" id="up">📷 上傳截圖</button>
    <input type="file" id="file" accept="image/*" hidden>
   </div>
@@ -289,6 +289,7 @@ function render(){
     d.onclick=()=>{board[i]=brush;results=null;$('res').innerHTML='';$('hint').textContent='盤面已變更,請重新計算。';render();};
     g.appendChild(d);
   }
+  setSimBtn();
 }
 function showResults(){
   const order=rank();const top=results[order[0]].best||1;
@@ -301,9 +302,9 @@ function showResults(){
     <td>${x.bestH}</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
     <tr><td></td><td colspan="5" class="hs" style="text-align:left">${per}</td></tr>`;
   });
-  h+='</table><div class="row"><button class="btn sec" id="sim">模擬點擊 #1(隨機補牌)</button></div>';
+  h+='</table>';
   $('res').innerHTML=h;
-  $('sim').onclick=simulate;
+  setSimBtn();
   const b=results[order[0]];
   $('hint').textContent=`建議先點 第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]}),規劃 ${b.bestH} 下,期望 ${b.best.toFixed(2)} 張/下。`;
 }
@@ -349,7 +350,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let animating=false;
 async function animate(start,idx){
   if(animating)return;animating=true;
-  const btn=$('sim');if(btn)btn.disabled=true;$('go').disabled=true;
+  $('sim').disabled=true;$('go').disabled=true;
   const sp=+$('speed').value;
   const {steps,total,final,colorOf}=buildSteps(start,idx);
   const g=$('grid');g.innerHTML='';g.classList.add('stage');
@@ -379,11 +380,13 @@ async function animate(start,idx){
   }
   // 模擬只是預覽:盤面與排名結果都維持不變
   $('hint').textContent=`模擬:點了${pos(idx)},共消除 ${total} 張(連鎖 ${steps.filter(s=>s.type==='clear').length-1} 輪)。這只是一次隨機預覽,盤面沒有改變。`;
-  simShown=true;setSimBtn();
-  if($('sim'))$('sim').disabled=false;$('go').disabled=false;animating=false;
+  simShown=true;animating=false;setSimBtn();$('go').disabled=false;
 }
 let simShown=false; // true:格子目前顯示的是模擬後的畫面
-function setSimBtn(){const b=$('sim');if(b)b.textContent=simShown?'回復版面':'模擬點擊 #1(隨機補牌)';}
+function setSimBtn(){ // 有計算結果(或正顯示模擬畫面)才能按;動畫播放中停用
+  const b=$('sim');b.textContent=simShown?'回復版面':'模擬點擊 #1(隨機補牌)';
+  b.disabled=animating||(!results&&!simShown);
+}
 function simulate(){ // 播放一次隨機模擬;模擬完按鈕變成「回復版面」
   if(animating)return;
   if(simShown){render();$('hint').textContent='已回復為你的盤面,可以再次模擬。';return;}
@@ -583,7 +586,7 @@ function redrawShot(){
   document.addEventListener('drop',e=>{e.preventDefault();const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('image/'));if(f)loadShot(f);});
 })();
 
-$('clr').onclick=()=>{results=null;$('res').innerHTML='';$('hint').textContent='按「計算」後顯示排名。';render();};
+$('sim').onclick=simulate;
 render();
 </script>
 </body>
