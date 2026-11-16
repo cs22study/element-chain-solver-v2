@@ -36,7 +36,9 @@
 | **00** | **中央樞紐與新開 Session 指南** | [`docs/00_MASTER_INDEX.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/00_MASTER_INDEX.md) | 本文件。定義整體架構原則、開場白模板、開發規範 |
 | **01** | **系統架構藍圖規格書** | [`docs/01_ARCHITECTURE_BLUEPRINT.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/01_ARCHITECTURE_BLUEPRINT.md) | 系統模組架構、Web Worker 執行架構、Canvas 圖形架構 |
 | **02** | **原作者專案分析與計算原理** | [`docs/02_ORIGINAL_ALGORITHM_ANALYSIS.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/02_ORIGINAL_ALGORITHM_ANALYSIS.md) | 深入解析神魔之塔元素連鎖規則、馬可夫決策/期望值動態規劃演算法、HSV色彩分類模型 |
-| **05** | **待辦事項與優化清單** | [`docs/05_TODO_LIST.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/05_TODO_LIST.md) | UX 回饋改進項目、PWA、多語言、手勢優化待辦清單 |
+| **03** | **工作進度與開發日誌** | [`docs/03_WORK_LOG.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/03_WORK_LOG.md) | 歷次版本更新記錄、需求變更分析、重大演算法調整與測試記錄 |
+| **04** | **各模組詳細規格書** | [`docs/04_MODULE_SPECS.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/04_MODULE_SPECS.md) | 模組 1~7 詳細功能規格、演算法方程式、資料格式與防護設計 |
+| **05** | **待辦事項與優化清單** | [`docs/05_TODO_LIST.md`](file:///d:/志松資料/GAS程式AI運用小松資料區cs22study/遊戲_神魔之塔小遊戲元素連鎖計算機20261116/element-chain-solver-v2/docs/05_TODO_LIST.md) | UX 回饋改進項目、優先級標註與模組完成狀態追蹤 |
 
 ---
 
