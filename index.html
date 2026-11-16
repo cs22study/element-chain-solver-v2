@@ -17,7 +17,13 @@ h1{font-size:18px;margin:0 0 4px}
 .palette{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
 .pal{flex:1;min-width:52px;padding:8px 0;border-radius:8px;border:2px solid transparent;color:#fff;font-weight:700;cursor:pointer;font-size:15px}
 .pal.on{border-color:#fff;box-shadow:0 0 0 2px #0008 inset}
-.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
+.toolbar{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap;align-items:center}
+.btn-sm{padding:6px 11px;font-size:13px;border-radius:6px;border:1px solid var(--line);background:#25293d;color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:600;transition:all .15s;user-select:none}
+.btn-sm:hover{background:#323854;border-color:#485072}
+.btn-sm:disabled{opacity:.35;cursor:not-allowed}
+.btn-accent{background:var(--acc);color:#222;border-color:transparent}
+.btn-accent:hover{background:#ffd21f}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px;touch-action:none}
 .cell{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
  color:#fff;font-weight:800;font-size:22px;cursor:pointer;position:relative;user-select:none;border:3px solid transparent}
 .cell small{font-size:12px;font-weight:600;opacity:.95;line-height:1.1}
@@ -61,8 +67,16 @@ footer a:hover{color:var(--acc)}
 <div class="wrap">
  <div class="panel">
   <h1>元素連鎖計算機</h1>
-  <div class="mut">先選屬性筆刷,再點格子把面板填成和遊戲一致(左上為第 1 列第 1 行)。</div>
+  <div class="mut">先選屬性筆刷，再點選或滑動格子自訂佈圖(支援右鍵快速切換)。</div>
   <div class="palette" id="pal"></div>
+  <div class="toolbar">
+   <button class="btn-sm btn-accent" id="btn-random" title="生成一局合理的隨機盤面(無初始3連，真實開局)">🎲 自由開局</button>
+   <button class="btn-sm" id="btn-reset" title="回復為預設範例盤面">🔄 重設盤面</button>
+   <button class="btn-sm" id="btn-fill" title="將全盤填為當前筆刷顏色，方便從零自由佈圖">🎨 單色重填</button>
+   <span style="flex:1"></span>
+   <button class="btn-sm" id="btn-undo" title="復原上一動 (Ctrl+Z)" disabled>↩️ 復原</button>
+   <button class="btn-sm" id="btn-redo" title="重做 (Ctrl+Y)" disabled>↪️ 重做</button>
+  </div>
   <div class="grid" id="grid"></div>
   <div class="row">
    <button class="btn" id="go">計算</button>
@@ -241,14 +255,92 @@ function analyze(board,H,cb){
 
 <script>
 const NAMES=['水','火','木','光','暗'];
-let board=[
+const DEFAULT_BOARD=[
  4,4,2,3,4,
  4,4,3,2,2,
  3,3,2,4,1,
  0,4,0,2,2,
  2,4,0,0,1];
+let board=DEFAULT_BOARD.slice();
 let brush=4,results=null,worker=null;
 const $=id=>document.getElementById(id);
+
+// 歷史紀錄 (Undo / Redo)
+const MAX_HISTORY=40;
+const undoStack=[];
+const redoStack=[];
+
+function pushUndo(prevState){
+  undoStack.push((prevState||board).slice());
+  if(undoStack.length>MAX_HISTORY)undoStack.shift();
+  redoStack.length=0;
+  updateHistoryBtns();
+}
+function updateHistoryBtns(){
+  const ub=$('btn-undo'),rb=$('btn-redo'),rnd=$('btn-random'),rst=$('btn-reset'),fil=$('btn-fill');
+  if(ub)ub.disabled=animating||undoStack.length===0;
+  if(rb)rb.disabled=animating||redoStack.length===0;
+  if(rnd)rnd.disabled=animating;
+  if(rst)rst.disabled=animating;
+  if(fil)fil.disabled=animating;
+}
+function undo(){
+  if(animating||undoStack.length===0)return;
+  redoStack.push(board.slice());
+  board=undoStack.pop();
+  results=null;$('res').innerHTML='';
+  $('hint').textContent='已復原上一動。請按「計算」重新分析。';
+  render();
+}
+function redo(){
+  if(animating||redoStack.length===0)return;
+  undoStack.push(board.slice());
+  board=redoStack.pop();
+  results=null;$('res').innerHTML='';
+  $('hint').textContent='已重做。請按「計算」重新分析。';
+  render();
+}
+
+// 自由開局演算法 (預設無初始 3 連消除，真實還原開局)
+function generateRandomBoard(noInitialMatches=true){
+  const N=5,b=new Array(25);
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const excluded=new Set();
+      if(noInitialMatches){
+        if(c>=2&&b[r*N+(c-1)]===b[r*N+(c-2)])excluded.add(b[r*N+(c-1)]);
+        if(r>=2&&b[(r-1)*N+c]===b[(r-2)*N+c])excluded.add(b[(r-1)*N+c]);
+      }
+      const candidates=[0,1,2,3,4].filter(col=>!excluded.has(col));
+      b[r*N+c]=candidates[Math.floor(Math.random()*candidates.length)];
+    }
+  }
+  return b;
+}
+function newRandomGame(){
+  if(animating)return;
+  pushUndo();
+  board=generateRandomBoard(true);
+  results=null;$('res').innerHTML='';
+  $('hint').textContent='🎲 已生成一局隨機盤面(保證無初始 3 連消除)，可按「計算」或自訂修改！';
+  render();
+}
+function resetBoard(){
+  if(animating)return;
+  pushUndo();
+  board=DEFAULT_BOARD.slice();
+  results=null;$('res').innerHTML='';
+  $('hint').textContent='🔄 已回復為預設範例盤面。';
+  render();
+}
+function fillBoardWithBrush(){
+  if(animating)return;
+  pushUndo();
+  board=new Array(25).fill(brush);
+  results=null;$('res').innerHTML='';
+  $('hint').textContent=`🎨 已將全盤填滿為【${NAMES[brush]}】屬性，方便您自由重新佈局。`;
+  render();
+}
 
 // 調色盤
 const pal=$('pal');
@@ -267,6 +359,7 @@ function render(){
   if(results){const bs=results.map(x=>x.best);lo=Math.min(...bs);hi=Math.max(...bs);}
   for(let i=0;i<25;i++){
     const d=document.createElement('div');d.className='cell c'+board[i];
+    d.dataset.idx=i;
     let inner=NAMES[board[i]];
     if(results){
       const r=order.indexOf(i)+1,x=results[i];
@@ -277,12 +370,97 @@ function render(){
       inner=`<span class="rk">#${r}</span>${r===1?'<span class="star">★</span>':''}${NAMES[board[i]]}<small>${x.best.toFixed(2)}</small>`;
     }
     d.innerHTML=inner;
-    d.onclick=()=>{board[i]=brush;results=null;$('res').innerHTML='';$('hint').textContent='盤面已變更,請重新計算。';render();};
     g.appendChild(d);
   }
   setSimBtn();
+  updateHistoryBtns();
   saveState();
 }
+
+// 滑動連續塗色 (Drag-to-Paint) 與互動事件
+let isPainting=false,strokeSnapshot=null,strokeChanged=false;
+function getCellIdx(e){
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  if(!el)return -1;
+  const cell=el.closest('.cell');
+  if(!cell||cell.dataset.idx===undefined)return -1;
+  return parseInt(cell.dataset.idx,10);
+}
+function paintCellAt(idx){
+  if(idx<0||idx>=25||board[idx]===brush)return;
+  board[idx]=brush;
+  strokeChanged=true;
+  const cell=$('grid').children[idx];
+  if(cell){
+    cell.className='cell c'+brush;
+    cell.innerHTML=NAMES[brush];
+    cell.style.filter='';
+  }
+}
+const grid=$('grid');
+grid.addEventListener('pointerdown',e=>{
+  if(animating||simShown||e.button!==0)return;
+  const idx=getCellIdx(e);
+  if(idx<0)return;
+  isPainting=true;
+  strokeSnapshot=board.slice();
+  strokeChanged=false;
+  paintCellAt(idx);
+  try{grid.setPointerCapture(e.pointerId);}catch(err){}
+});
+grid.addEventListener('pointermove',e=>{
+  if(!isPainting)return;
+  const idx=getCellIdx(e);
+  if(idx>=0)paintCellAt(idx);
+});
+const finishPainting=e=>{
+  if(!isPainting)return;
+  isPainting=false;
+  try{grid.releasePointerCapture(e.pointerId);}catch(err){}
+  if(strokeChanged){
+    pushUndo(strokeSnapshot);
+    results=null;$('res').innerHTML='';
+    $('hint').textContent='盤面已變更,請重新計算。';
+    render();
+  }
+  strokeSnapshot=null;
+  strokeChanged=false;
+};
+grid.addEventListener('pointerup',finishPainting);
+grid.addEventListener('pointercancel',finishPainting);
+
+// 右鍵點擊格子循環切換屬性 (水->火->木->光->暗)
+grid.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  if(animating||simShown)return;
+  const idx=getCellIdx(e);
+  if(idx>=0){
+    pushUndo();
+    board[idx]=(board[idx]+1)%5;
+    results=null;$('res').innerHTML='';
+    $('hint').textContent=`已將格子切換為【${NAMES[board[idx]]}】屬性。請重新計算。`;
+    render();
+  }
+});
+
+// 工具列按鈕綁定
+$('btn-random').onclick=newRandomGame;
+$('btn-reset').onclick=resetBoard;
+$('btn-fill').onclick=fillBoardWithBrush;
+$('btn-undo').onclick=undo;
+$('btn-redo').onclick=redo;
+
+// 鍵盤快速鍵支援 (Ctrl+Z: 復原, Ctrl+Y / Ctrl+Shift+Z: 重做)
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){
+    if(e.shiftKey)redo();else undo();
+    e.preventDefault();
+  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){
+    redo();
+    e.preventDefault();
+  }
+});
 // 重新整理後保留盤面與上次的計算結果(只存在這個瀏覽器,不會上傳)
 const SAVE_KEY='element-chain-solver.v1';
 function saveState(){
@@ -355,6 +533,7 @@ let animating=false;
 async function animate(start,idx){
   if(animating)return;animating=true;
   $('sim').disabled=true;$('go').disabled=true;
+  updateHistoryBtns();
   const sp=0.5;
   const {steps,total,final,colorOf}=buildSteps(start,idx);
   const g=$('grid');g.innerHTML='';g.classList.add('stage');
@@ -385,6 +564,7 @@ async function animate(start,idx){
   // 模擬只是預覽:盤面與排名結果都維持不變
   $('hint').textContent=`模擬:點了${pos(idx)},共消除 ${total} 張(連鎖 ${steps.filter(s=>s.type==='clear').length-1} 輪)。模擬不補新牌,只看既有卡片掉落後的連鎖;盤面沒有改變。`;
   simShown=true;animating=false;setSimBtn();$('go').disabled=false;
+  updateHistoryBtns();
 }
 let simShown=false; // true:格子目前顯示的是模擬後的畫面
 function setSimBtn(){ // 有計算結果(或正顯示模擬畫面)才能按;動畫播放中停用
@@ -552,6 +732,7 @@ function redrawShot(apply=true){
   }
   if(!apply)return; // 只是視窗大小改變(例如手機捲動收起網址列),不動盤面與計算結果
   // 套用到盤面
+  pushUndo();
   board=board.map((v,i)=>shot.cells[i]>=0?shot.cells[i]:v);
   results=null;$('res').innerHTML='';$('hint').textContent='已由截圖更新盤面,請按「計算」。'+((!shot.auto||unk)?'(辨識可能有誤,請展開「截圖辨識」檢查)':'');
   $('shotmsg').textContent=(shot.auto?'已自動定位格子。':'自動定位失敗,請手動拖框對準 5×5 卡片。')+(unk?` 有 ${unk} 格無法辨識(紅色「?」,沿用原本的值),請調整框或用筆刷手動修正。`:' 25 格都已辨識,若有錯誤可微調框或用筆刷修正。');
