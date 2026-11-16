@@ -35,12 +35,19 @@ h1{font-size:18px;margin:0 0 4px}
 .sim-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px;touch-action:none}
 .cell{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
- color:#fff;font-weight:800;font-size:22px;cursor:pointer;position:relative;user-select:none;border:3px solid transparent}
+ color:#fff;font-weight:800;font-size:20px;cursor:pointer;position:relative;user-select:none;border:3px solid transparent;padding:2px}
+.cell .cell-attr{font-size:20px;line-height:1;margin-top:3px;font-weight:900;text-shadow:0 1px 3px rgba(0,0,0,.6)}
 .cell small{font-size:12px;font-weight:600;opacity:.95;line-height:1.1}
-.cell .rk{position:absolute;top:2px;left:5px;font-size:12px;font-weight:800}
+.cell .rk{position:absolute;top:2px;left:4px;font-size:11px;font-weight:800;background:rgba(0,0,0,.4);padding:1px 4px;border-radius:4px;line-height:1.1}
 .cell.r1{border-color:#ffd21f;box-shadow:0 0 14px #ffd21fcc}
 .cell.r2,.cell.r3{border-color:#ffffff88}
-.cell .star{position:absolute;top:1px;right:5px;font-size:18px;color:#ffd21f;text-shadow:0 0 3px #000,0 0 3px #000}
+.cell .star{position:absolute;top:1px;right:4px;font-size:16px;color:#ffd21f;text-shadow:0 0 3px #000,0 0 3px #000}
+.cell-info{margin-top:2px;display:flex;flex-direction:column;align-items:center;line-height:1.15;pointer-events:none}
+.cell-score{font-size:13px;font-weight:900;color:#ffd21f;text-shadow:0 1px 2px #000,0 0 4px #000}
+.cell-sub{font-size:10px;font-weight:600;opacity:.92;color:#fff;text-shadow:0 1px 2px #000}
+.badge-tag{display:inline-block;padding:1px 5px;border-radius:4px;font-size:11px;font-weight:700}
+.badge-instant{background:#14532d;color:#86efac;border:1px solid #16a34a}
+.badge-layout{background:#713f12;color:#fde047;border:1px solid #ca8a04}
 .c0{background:var(--e0)}.c1{background:var(--e1)}.c2{background:var(--e2)}.c3{background:var(--e3);color:#222}.c4{background:var(--e4)}
 /* 模擬動畫舞台:卡片用絕對定位,靠 top 的 transition 做掉落 */
 .grid.stage{display:block;position:relative;aspect-ratio:1;overflow:hidden;--cs:calc((100% - 24px)/5)}
@@ -113,6 +120,11 @@ footer a:hover{color:var(--acc)}
   <div class="mut" id="st" style="margin-top:6px"></div>
 
   <div class="row">
+   <label>推薦排序策略 <select id="strategy">
+    <option value="instant">🎯 即時消除優先 (第 1 步穩拿高分)</option>
+    <option value="expect">🧠 兩步期望優先 (多步佈局博弈)</option>
+    <option value="safe">🛡️ 穩健保底優先 (100% 連鎖保證)</option>
+   </select></label>
    <label>規劃步數上限 <select id="depth">
     <option value="2">2 步(預設)</option><option value="3">3 步(較慢)</option><option value="4">4 步(很慢,可能要數分鐘)</option>
    </select></label>
@@ -385,29 +397,64 @@ NAMES.forEach((n,i)=>{const b=document.createElement('button');b.className='pal 
    }
  };pal.appendChild(b);});
 
-function rank(){ // 排名 index -> rank
+function getStrategy(){
+  const s=$('strategy');
+  return s?s.value:'instant';
+}
+function sortResults(list){
+  if(!list)return null;
+  const strat=getStrategy();
+  return list.slice().sort((a,b)=>{
+    if(strat==='instant'){
+      // 🎯 即時消除優先：優先看第 1 步消除期望張數 (q[1])
+      const diff=b.q[1]-a.q[1];
+      if(Math.abs(diff)>0.01)return diff;
+      if(Math.abs(b.pc-a.pc)>0.01)return b.pc-a.pc;
+      return b.best-a.best;
+    }else if(strat==='safe'){
+      // 🛡️ 穩健保底優先：連鎖率 100% 優先，再比即時消除張數
+      const aSafe=a.pc>=0.99?1:0, bSafe=b.pc>=0.99?1:0;
+      if(aSafe!==bSafe)return bSafe-aSafe;
+      if(Math.abs(b.q[1]-a.q[1])>0.01)return b.q[1]-a.q[1];
+      return b.best-a.best;
+    }else{
+      // 🧠 兩步期望優先 (多步佈局博弈)：原作者排序基準 max_h (q[h]/h)
+      return b.best-a.best;
+    }
+  });
+}
+function rank(){ // 排名 index -> rank (依當前選擇的排序策略)
   if(!results)return null;
-  return results.slice().sort((a,b)=>b.best-a.best).map(r=>r.idx);
+  return sortResults(results).map(r=>r.idx);
 }
 function render(){
   const g=$('grid');g.innerHTML='';g.classList.remove('stage');
   if(simShown){simShown=false;setSimBtn();}
   const order=rank();
+  const strat=getStrategy();
   let lo=0,hi=1;
-  if(results){const bs=results.map(x=>x.best);lo=Math.min(...bs);hi=Math.max(...bs);}
+  if(results){
+    const scores=results.map(x=>strat==='instant'?x.q[1]:x.best);
+    lo=Math.min(...scores);hi=Math.max(...scores);
+  }
   for(let i=0;i<25;i++){
     const d=document.createElement('div');d.className='cell c'+board[i];
     d.dataset.idx=i;
-    let inner=NAMES[board[i]];
+    let inner=`<span class="cell-attr">${NAMES[board[i]]}</span>`;
     if(results){
       const r=order.indexOf(i)+1,x=results[i];
       d.classList.add(r===1?'r1':r<=3?'r2':'x');
-      // 期望分數越高越鮮亮,越低越灰暗
-      const t=hi>lo?(x.best-lo)/(hi-lo):1;
+      const scoreKey=strat==='instant'?x.q[1]:x.best;
+      const t=hi>lo?(scoreKey-lo)/(hi-lo):1;
       d.style.filter=`saturate(${(0.05+0.95*t).toFixed(2)}) brightness(${(0.5+0.5*t).toFixed(2)})`;
-      const pts=Math.round(x.best*10);
-      inner=`<span class="rk">#${r}</span>${r===1?'<span class="star">★</span>':''}${NAMES[board[i]]}<small>${pts}分</small>`;
-      d.title=`起手點 #${r}: 預估 ${pts} 分 (期望消除 ${x.best.toFixed(2)} 張/步)`;
+      
+      const step1Pts=Math.round(x.q[1]*10);
+      const bestPts=Math.round(x.best*10);
+      const displayPts=strat==='instant'?step1Pts:bestPts;
+      const subInfo=strat==='instant'?`1步·${x.q[1].toFixed(1)}張`:`${x.bestH}步·${x.best.toFixed(1)}張`;
+      
+      inner=`<span class="rk">#${r}</span>${r===1?'<span class="star">★</span>':''}<span class="cell-attr">${NAMES[board[i]]}</span><div class="cell-info"><span class="cell-score">${displayPts}分</span><span class="cell-sub">${subInfo}</span></div>`;
+      d.title=`起手點 #${r}: 第 1 步現得 ${step1Pts} 分 (連鎖率 ${(x.pc*100).toFixed(0)}%) | ${x.bestH} 步期望 ${bestPts} 分/步`;
     }
     d.innerHTML=inner;
     g.appendChild(d);
@@ -433,7 +480,7 @@ function paintCellAt(idx){
   const cell=$('grid').children[idx];
   if(cell){
     cell.className='cell c'+brush;
-    cell.innerHTML=NAMES[brush];
+    cell.innerHTML=`<span class="cell-attr">${NAMES[brush]}</span>`;
     cell.style.filter='';
   }
 }
@@ -520,7 +567,7 @@ window.addEventListener('keydown',e=>{
 // 重新整理後保留盤面與上次的計算結果(只存在這個瀏覽器,不會上傳)
 const SAVE_KEY='element-chain-solver.v1';
 function saveState(){
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({board,results,depth:$('depth').value}));}catch(e){}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({board,results,depth:$('depth').value,strategy:$('strategy').value}));}catch(e){}
 }
 function loadState(){
   try{
@@ -528,24 +575,48 @@ function loadState(){
     if(!d||!Array.isArray(d.board)||d.board.length!==25||!d.board.every(v=>Number.isInteger(v)&&v>=0&&v<5))return false;
     board=d.board;
     if(['2','3','4'].includes(String(d.depth)))$('depth').value=String(d.depth);
+    if(['instant','expect','safe'].includes(String(d.strategy)))$('strategy').value=String(d.strategy);
     const r=d.results;
     if(Array.isArray(r)&&r.length===25&&r.every(x=>x&&Array.isArray(x.q)&&Number.isFinite(x.best)&&Number.isFinite(x.bestH)))results=r;
     return true;
   }catch(e){return false;}
 }
 function showResults(){
-  const order=rank();const top=results[order[0]].best||1;
-  let h='<table><tr><th>#</th><th>位置</th><th>屬性</th><th>預估得分<br><small style="color:var(--mut);font-weight:normal">10分/格</small></th><th>期望消除<br><small style="color:var(--mut);font-weight:normal">張/步</small></th><th>最佳步數</th><th>第 1 步連鎖率</th></tr>';
+  const order=rank();
+  const strat=getStrategy();
+  const top=(strat==='instant'?results[order[0]].q[1]:results[order[0]].best)||1;
+  const stratTitle=strat==='instant'?'即時預估 (第1步)':strat==='safe'?'穩健保底得分':'期望得分 (平均)';
+  let h=`<table><tr><th>#</th><th>位置</th><th>屬性</th><th>${stratTitle}<br><small style="color:var(--mut);font-weight:normal">10分/格</small></th><th>期望消除<br><small style="color:var(--mut);font-weight:normal">張數</small></th><th>最佳步數</th><th>第 1 步連鎖率</th></tr>`;
+  
   order.slice(0,10).forEach((idx,k)=>{
     const x=results[idx],r=Math.floor(idx/5)+1,c=idx%5+1;
-    const scorePts=Math.round(x.best*10);
+    const step1Pts=Math.round(x.q[1]*10);
+    const bestPts=Math.round(x.best*10);
     const totalPts=Math.round(x.q[x.bestH]*10);
-    const per=x.q.slice(1).map((v,i)=>`<b>${i+1}步</b> 預估 ${Math.round((v/(i+1))*10)}分/步 (${(v/(i+1)).toFixed(2)}張${i>0?`，總計${Math.round(v*10)}分`:''})`).join(' · ');
-    h+=`<tr class="res-row" data-idx="${idx}" title="點擊模擬此方案"><td>${k+1}</td><td>第${r}列 第${c}行</td><td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
-    <td><b style="color:var(--acc);font-size:15px">${scorePts} 分</b>${x.bestH>1?`<div class="hs" style="color:var(--mut)">總計 ${totalPts}分</div>`:''}<div class="bar"><i style="width:${(x.best/top*100).toFixed(0)}%"></i></div></td>
-    <td><b>${x.best.toFixed(2)}</b> 張</td>
-    <td>${x.bestH} 步</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
-    <tr><td></td><td colspan="6" class="hs" style="text-align:left">${per}</td></tr>`;
+    const displayPts=strat==='instant'?step1Pts:bestPts;
+    const isLayoutOnly=(x.pc<0.5&&x.bestH>1&&step1Pts<=20);
+    const badgeHtml=isLayoutOnly?`<span class="badge-tag badge-layout">⚠️ 佈局蓄勢 (第1步僅消1格)</span> `:`<span class="badge-tag badge-instant">⚡ 盤面即時連鎖</span> `;
+    
+    const per=`${badgeHtml}<b>1步即時</b>: 預估 ${step1Pts}分/步 (${x.q[1].toFixed(2)}張) · 連鎖率 ${(x.pc*100).toFixed(0)}%` + 
+      (x.q.length>2?` · <b>2步期望</b>: 預估 ${Math.round((x.q[2]/2)*10)}分/步 (${(x.q[2]/2).toFixed(2)}張，總計${Math.round(x.q[2]*10)}分)`:'');
+      
+    h+=`<tr class="res-row" data-idx="${idx}" title="點擊模擬此方案">
+      <td>${k+1}</td>
+      <td>第${r}列 第${c}行</td>
+      <td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
+      <td>
+        <div style="color:var(--acc);font-size:16px;font-weight:800">${displayPts} 分</div>
+        <div class="hs" style="color:var(--mut);font-size:11px">現拿 ${step1Pts}分${x.bestH>1?` · 2步${totalPts}分`:''}</div>
+        <div class="bar"><i style="width:${Math.min(100,(displayPts/top*100)).toFixed(0)}%"></i></div>
+      </td>
+      <td>
+        <div style="font-weight:700">${(strat==='instant'?x.q[1]:x.best).toFixed(2)} 張</div>
+        <div class="hs" style="color:var(--mut);font-size:11px">${strat==='instant'?'(第1步)':`(${x.bestH}步平均)`}</div>
+      </td>
+      <td>${x.bestH} 步</td>
+      <td><b style="color:${x.pc>=0.8?'#86efac':x.pc>=0.4?'#fde047':'#fca5a5'}">${(x.pc*100).toFixed(0)}%</b></td>
+    </tr>
+    <tr><td></td><td colspan="6" class="hs" style="text-align:left;padding:3px 5px 8px">${per}</td></tr>`;
   });
   h+='</table>';
   $('res').innerHTML=h;
@@ -557,8 +628,11 @@ function showResults(){
   });
   setSimBtn();
   const b=results[order[0]];
-  const topScore=Math.round(b.best*10);
-  $('hint').innerHTML=`建議先點 <b>第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]})</b>，預估可得 <b style="color:var(--acc);font-size:16px">${topScore} 分</b> (期望消除 ${b.best.toFixed(2)} 張/步，規劃 ${b.bestH} 步${b.bestH>1?`，總計 ${Math.round(b.q[b.bestH]*10)} 分`:''})。<br><span style="color:var(--acc);font-size:12.5px">💡 點擊盤面任一格或右側清單可模擬該起手點｜按【✏️ 修改盤面】可解除鎖定重新塗色</span>`;
+  const bStep1Pts=Math.round(b.q[1]*10);
+  const bBestPts=Math.round(b.best*10);
+  const topScore=strat==='instant'?bStep1Pts:bBestPts;
+  const stratDesc=strat==='instant'?'第 1 步即時可得':strat==='safe'?'穩健保底可得':'多步期望可得';
+  $('hint').innerHTML=`建議先點 <b>第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]})</b>，${stratDesc} <b style="color:var(--acc);font-size:16px">${topScore} 分</b> (第 1 步即時 ${bStep1Pts} 分，連鎖率 ${(b.pc*100).toFixed(0)}%${b.bestH>1?`；${b.bestH} 步期望總計 ${Math.round(b.q[b.bestH]*10)} 分`:''})。<br><span style="color:var(--acc);font-size:12.5px">💡 點擊盤面任一格或右側清單可模擬該起手點｜按【✏️ 修改盤面】可解除鎖定重新塗色</span>`;
   $('edit-board').style.display='inline-block';
 }
 // 在主執行緒也載入一份引擎,用來產生模擬動畫的每一步
@@ -619,10 +693,12 @@ function setupSimStage(idx){
   simStepIdx=-1;
   simShown=true;
   
-  const expPts=results&&results[idx]?` (預估 ${Math.round(results[idx].best*10)}分)`:'';
+  const rx=results&&results[idx];
+  const step1Pts=rx?Math.round(rx.q[1]*10):0;
+  const expPts=rx?` (預估 ${Math.round(rx.best*10)}分 | 第1步現得: ${step1Pts}分)`:'';
   $('sim-ctrl').style.display='flex';
   $('sim-title').textContent=`模擬演練：${posText(idx)}${expPts}`;
-  $('sim-progress').textContent=`準備開始 (共 ${simData.steps.length} 動) | 目前得分: 0 分`;
+  $('sim-progress').innerHTML=`準備開始 (共 ${simData.steps.length} 動) | 目前得分: <b style="color:var(--acc)">0 分</b>`;
   $('sim-play').textContent='▶️ 播放';
   $('sim').textContent='回復版面';
   $('go').disabled=true;
@@ -667,7 +743,7 @@ function updateSimUI(cum=0){
   const totalSteps=simData?simData.steps.length:0;
   const cur=simStepIdx+1;
   const curPts=cum*10;
-  $('sim-progress').textContent=`進度: ${cur} / ${totalSteps} | 目前得分: ${curPts} 分`;
+  $('sim-progress').innerHTML=`進度: <b>${cur} / ${totalSteps}</b> | 目前得分: <b style="color:var(--acc);font-size:15px">${curPts} 分</b>`;
   $('sim-play').textContent=simPlaying?'⏸️ 暫停':(cur>=totalSteps?'▶️ 再次播放':'▶️ 播放');
   
   if(simStepIdx<0){
@@ -719,7 +795,14 @@ async function simStepForward(isAuto=false){
   if(simStepIdx>=simData.steps.length-1){
     simPlaying=false;
     const finalPts=simData.total*10;
-    $('hint').textContent=`模擬結束：共消除 ${simData.total} 張卡片，獲得 ${finalPts} 分 (連鎖 ${simData.steps.filter(s=>s.type==='clear').length-1} 輪)。盤面原狀維持不變。`;
+    let extraNote='';
+    if(results&&results[simIdx]){
+      const rx=results[simIdx];
+      if(simData.total<=1&&rx.bestH>1){
+        extraNote='<br><span style="color:#fcd34d;font-size:12.5px">💡 提示：此方案為「長遠佈局型」，第 1 步盤面僅消 1 格 (10分)，高期望值依賴後續隨機補牌後的第 2 步。若想找當前盤面能立刻大連鎖的起手點，請將上方策略切換為【🎯 即時消除優先】！</span>';
+      }
+    }
+    $('hint').innerHTML=`模擬結束：共消除 <b>${simData.total}</b> 張卡片，獲得 <b style="color:var(--acc);font-size:16px">${finalPts} 分</b> (連鎖 ${simData.steps.filter(s=>s.type==='clear').length-1} 輪)。盤面原狀維持不變。${extraNote}`;
     updateSimUI(simData.total);
   }
 }
@@ -1043,6 +1126,7 @@ if('serviceWorker' in navigator){
 }
 
 $('depth').onchange=()=>{results=null;$('res').innerHTML='';$('hint').textContent='「規劃步數上限」已變更,請重新計算。';render();};
+$('strategy').onchange=()=>{if(results){render();showResults();}};
 $('sim').onclick=simulate;
 const restored=loadState();
 render();

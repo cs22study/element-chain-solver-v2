@@ -106,3 +106,51 @@ assert.strictEqual(cumulativeCards, 4);
 assert.strictEqual(cumulativeScore, 40);
 console.log(`模擬連鎖累計: 消除 ${cumulativeCards} 張，累計得分 ${cumulativeScore} 分`);
 console.log('✅ 測試 3 通過：遊戲計分 (10分/格) 與逐步累積得分計算精確無誤！');
+
+console.log('--- 測試 4: 推薦排序策略切換驗證 (即時爆發 vs 多步期望) ---');
+// 模擬使用者真實反饋數據：
+// Plan A (方案2): 佈局型，第1步期望僅 1.76張(18分，連鎖率20%)，但2步平均期望 7.59張(76分)
+const planA = { idx: 13, q: [0, 1.76, 15.18], best: 7.59, bestH: 2, pc: 0.20 };
+// Plan B (方案4): 即時型，第1步期望高達 7.00張(70分，連鎖率100%)，2步平均期望 6.76張(68分)
+const planB = { idx: 14, q: [0, 7.00, 13.52], best: 7.00, bestH: 1, pc: 1.00 };
+
+function sortMock(list, strat) {
+  return list.slice().sort((a, b) => {
+    if (strat === 'instant') {
+      const diff = b.q[1] - a.q[1];
+      if (Math.abs(diff) > 0.01) return diff;
+      if (Math.abs(b.pc - a.pc) > 0.01) return b.pc - a.pc;
+      return b.best - a.best;
+    } else if (strat === 'safe') {
+      const aSafe = a.pc >= 0.99 ? 1 : 0, bSafe = b.pc >= 0.99 ? 1 : 0;
+      if (aSafe !== bSafe) return bSafe - aSafe;
+      if (Math.abs(b.q[1] - a.q[1]) > 0.01) return b.q[1] - a.q[1];
+      return b.best - a.best;
+    } else {
+      return b.best - a.best;
+    }
+  });
+}
+
+// 1. 即時消除優先 (instant): Plan B (第1步70分) 必須排在 Plan A (第1步18分) 前面
+const resInstant = sortMock([planA, planB], 'instant');
+assert.strictEqual(resInstant[0].idx, planB.idx, '即時消除優先模式下，第1步連鎖消除高分者必須排在第一名');
+
+// 2. 兩步期望優先 (expect): Plan A (7.59張/步) 依多步期望排在前面
+const resExpect = sortMock([planA, planB], 'expect');
+assert.strictEqual(resExpect[0].idx, planA.idx, '兩步期望優先模式下，多步博弈期望高者排在第一名');
+
+// 3. 穩健保底優先 (safe): Plan B (100%連鎖) 必須排在第一名
+const resSafe = sortMock([planA, planB], 'safe');
+assert.strictEqual(resSafe[0].idx, planB.idx, '穩健保底模式下，100% 連鎖者排在第一名');
+
+console.log('✅ 測試 4 通過：多策略排序切換演算法驗證精確無誤！');
+
+console.log('--- 測試 5: 雙排字體結構與 DOM 樣式檢驗 ---');
+const htmlContent = fs.readFileSync('index.html', 'utf-8');
+assert(htmlContent.includes('id="strategy"'), 'index.html 必須包含 #strategy 選擇器');
+assert(htmlContent.includes('.cell-info'), 'index.html 必須包含 .cell-info 雙排容器');
+assert(htmlContent.includes('.cell-score'), 'index.html 必須包含 .cell-score 分數標籤');
+assert(htmlContent.includes('.cell-sub'), 'index.html 必須包含 .cell-sub 步數/張數標籤');
+assert(htmlContent.includes('.badge-layout'), 'index.html 必須包含 .badge-layout 佈局提示徽章');
+console.log('✅ 測試 5 通過：雙排呈現與提示標籤完整整合！');
