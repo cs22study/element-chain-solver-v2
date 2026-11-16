@@ -10,7 +10,9 @@ const html = fs.readFileSync('index.html', 'utf-8');
 const requiredIds = [
   'pal', 'grid', 'go', 'sim', 'up', 'file', 'pg', 'st', 'depth', 'shot',
   'cvbox', 'cv', 'redet', 'shotmsg', 'res', 'hint',
-  'btn-random', 'btn-reset', 'btn-fill', 'btn-undo', 'btn-redo'
+  'btn-random', 'btn-reset', 'btn-fill', 'btn-undo', 'btn-redo',
+  'sim-ctrl', 'sim-title', 'sim-progress', 'sim-prev', 'sim-play', 'sim-next', 'sim-replay', 'sim-exit',
+  'edit-board', 'eyemode'
 ];
 
 requiredIds.forEach(id => {
@@ -29,8 +31,9 @@ scriptMatches.forEach((m, idx) => {
   } catch (err) {
     // If it uses DOM variables like document or localStorage, wrap with mock
     const wrapped = `
-      const document = { getElementById: () => ({ addEventListener: () => {}, onclick: null, style: {}, classList: { add(){}, remove(){}, toggle(){} }, appendChild(){}, children: [] }), elementFromPoint: () => null, addEventListener: () => {} };
+      const document = { getElementById: () => ({ addEventListener: () => {}, onclick: null, style: {}, classList: { add(){}, remove(){}, toggle(){} }, appendChild(){}, querySelectorAll: () => [], children: [] }), elementFromPoint: () => null, addEventListener: () => {} };
       const window = { addEventListener: () => {} };
+      const navigator = { serviceWorker: { register: () => Promise.resolve() } };
       const localStorage = { getItem: () => null, setItem: () => {} };
       const URL = { createObjectURL: () => '', revokeObjectURL: () => {} };
       const Blob = function(){};

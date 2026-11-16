@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>元素連鎖計算機</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e2130">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{--bg:#14161f;--panel:#1e2130;--line:#33384d;--tx:#e8eaf3;--mut:#8b91a8;
  --e0:#3b82f6;--e1:#e53935;--e2:#22c55e;--e3:#eab308;--e4:#a855f7;--acc:#f5c451}
@@ -17,12 +21,18 @@ h1{font-size:18px;margin:0 0 4px}
 .palette{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
 .pal{flex:1;min-width:52px;padding:8px 0;border-radius:8px;border:2px solid transparent;color:#fff;font-weight:700;cursor:pointer;font-size:15px}
 .pal.on{border-color:#fff;box-shadow:0 0 0 2px #0008 inset}
-.toolbar{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap;align-items:center}
-.btn-sm{padding:6px 11px;font-size:13px;border-radius:6px;border:1px solid var(--line);background:#25293d;color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:600;transition:all .15s;user-select:none}
+.toolbar{display:flex;gap:4px;margin:8px 0;flex-wrap:wrap;align-items:center}
+.btn-sm{padding:5px 9px;font-size:12.5px;border-radius:6px;border:1px solid var(--line);background:#25293d;color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-weight:600;transition:all .15s;user-select:none}
 .btn-sm:hover{background:#323854;border-color:#485072}
 .btn-sm:disabled{opacity:.35;cursor:not-allowed}
 .btn-accent{background:var(--acc);color:#222;border-color:transparent}
 .btn-accent:hover{background:#ffd21f}
+.res-row{cursor:pointer;transition:background .15s}
+.res-row:hover{background:#2a3047}
+.res-row.active{background:#353d5e;box-shadow:inset 3px 0 0 var(--acc)}
+.sim-bar{background:#181b28;border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.sim-header{display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.sim-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px;touch-action:none}
 .cell{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
  color:#fff;font-weight:800;font-size:22px;cursor:pointer;position:relative;user-select:none;border:3px solid transparent}
@@ -78,9 +88,24 @@ footer a:hover{color:var(--acc)}
    <button class="btn-sm" id="btn-redo" title="重做 (Ctrl+Y)" disabled>↪️ 重做</button>
   </div>
   <div class="grid" id="grid"></div>
+  <div id="sim-ctrl" class="sim-bar" style="display:none">
+   <div class="sim-header">
+    <span id="sim-title" style="font-weight:700;color:var(--acc)">模擬演練</span>
+    <span class="mut" id="sim-progress">第 0 / 0 步</span>
+   </div>
+   <div class="sim-btns">
+    <button class="btn-sm" id="sim-prev" title="上一步">⏮️ 上一步</button>
+    <button class="btn-sm btn-accent" id="sim-play" title="播放 / 暫停">⏸️ 暫停</button>
+    <button class="btn-sm" id="sim-next" title="下一步">⏭️ 下一步</button>
+    <button class="btn-sm" id="sim-replay" title="重播">🔄 重播</button>
+    <span style="flex:1"></span>
+    <button class="btn-sm sec" id="sim-exit" title="回復原盤面">⏹️ 回復盤面</button>
+   </div>
+  </div>
   <div class="row">
    <button class="btn" id="go">計算</button>
-   <button class="btn sec" id="sim" disabled>模擬點擊 #1</button>
+   <button class="btn sec" id="sim" disabled>模擬最佳 #1</button>
+   <button class="btn sec" id="edit-board" style="display:none" title="退出檢視模式，解除鎖定重新塗色">✏️ 修改盤面</button>
    <button class="btn sec" id="up">📷 上傳截圖</button>
    <input type="file" id="file" accept="image/*" hidden>
   </div>
@@ -95,7 +120,12 @@ footer a:hover{color:var(--acc)}
 
   <details id="shot">
    <summary>截圖辨識(可上傳、拖曳或 Ctrl+V 貼上)</summary>
-   <div class="mut" style="margin-top:6px">拖動畫面上的框,讓格線對準 5×5 卡片(拖角落調整大小、拖框內移動)。辨識依每張卡左上角的屬性色塊,框一移動就會即時更新盤面。</div>
+   <div class="mut" style="margin-top:6px">拖動畫面上的框對準 5×5 卡片。點擊畫面上的卡片可直接切換屬性修正辨識。</div>
+   <div class="row" style="margin-top:8px;gap:12px;align-items:center">
+    <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--tx)">
+     <input type="checkbox" id="eyemode"> 🌙 護眼/濾藍光色差校正 (改善偏黃偏暖、水/暗誤判)
+    </label>
+   </div>
    <div id="cvbox" style="display:none"><canvas id="cv"></canvas>
     <div class="row"><button class="btn sec" id="redet" style="padding:5px 10px;font-size:13px">重新自動偵測</button></div></div>
    <div class="mut" id="shotmsg"></div>
@@ -345,7 +375,15 @@ function fillBoardWithBrush(){
 // 調色盤
 const pal=$('pal');
 NAMES.forEach((n,i)=>{const b=document.createElement('button');b.className='pal c'+i+(i===brush?' on':'');b.textContent=n;
- b.onclick=()=>{brush=i;[...pal.children].forEach((x,j)=>x.classList.toggle('on',j===i));};pal.appendChild(b);});
+ b.onclick=()=>{
+   brush=i;[...pal.children].forEach((x,j)=>x.classList.toggle('on',j===i));
+   if(results!==null){
+     if(simShown)exitSim();
+     results=null;$('edit-board').style.display='none';$('res').innerHTML='';
+     $('hint').textContent=`已選取【${n}】筆刷並進入修改模式，可點選或滑動塗色。`;
+     render();
+   }
+ };pal.appendChild(b);});
 
 function rank(){ // 排名 index -> rank
   if(!results)return null;
@@ -402,6 +440,11 @@ grid.addEventListener('pointerdown',e=>{
   if(animating||simShown||e.button!==0)return;
   const idx=getCellIdx(e);
   if(idx<0)return;
+  // 重要防護：若當前有計算結果，點擊格子是為了模擬該起手點，避免誤塗色破壞結果
+  if(results!==null){
+    simulateChoice(idx);
+    return;
+  }
   isPainting=true;
   strokeSnapshot=board.slice();
   strokeChanged=false;
@@ -420,6 +463,7 @@ const finishPainting=e=>{
   if(strokeChanged){
     pushUndo(strokeSnapshot);
     results=null;$('res').innerHTML='';
+    $('edit-board').style.display='none';
     $('hint').textContent='盤面已變更,請重新計算。';
     render();
   }
@@ -435,20 +479,30 @@ grid.addEventListener('contextmenu',e=>{
   if(animating||simShown)return;
   const idx=getCellIdx(e);
   if(idx>=0){
+    if(results!==null){
+      results=null;$('edit-board').style.display='none';$('res').innerHTML='';
+    }
     pushUndo();
     board[idx]=(board[idx]+1)%5;
-    results=null;$('res').innerHTML='';
     $('hint').textContent=`已將格子切換為【${NAMES[board[idx]]}】屬性。請重新計算。`;
     render();
   }
 });
 
-// 工具列按鈕綁定
+// 工具列與模式按鈕綁定
 $('btn-random').onclick=newRandomGame;
 $('btn-reset').onclick=resetBoard;
 $('btn-fill').onclick=fillBoardWithBrush;
 $('btn-undo').onclick=undo;
 $('btn-redo').onclick=redo;
+$('edit-board').onclick=()=>{
+  if(simShown)exitSim();
+  results=null;
+  $('edit-board').style.display='none';
+  $('res').innerHTML='';
+  $('hint').textContent='已進入修改模式，請用筆刷上色或點擊「自由開局」。';
+  render();
+};
 
 // 鍵盤快速鍵支援 (Ctrl+Z: 復原, Ctrl+Y / Ctrl+Shift+Z: 重做)
 window.addEventListener('keydown',e=>{
@@ -483,16 +537,23 @@ function showResults(){
   order.slice(0,10).forEach((idx,k)=>{
     const x=results[idx],r=Math.floor(idx/5)+1,c=idx%5+1;
     const per=x.q.slice(1).map((v,i)=>`<b>${i+1}步</b> ${(v/(i+1)).toFixed(2)}`).join(' · ');
-    h+=`<tr><td>${k+1}</td><td>第${r}列 第${c}行</td><td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
+    h+=`<tr class="res-row" data-idx="${idx}" title="點擊模擬此方案"><td>${k+1}</td><td>第${r}列 第${c}行</td><td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
     <td><b>${x.best.toFixed(2)}</b><div class="bar"><i style="width:${(x.best/top*100).toFixed(0)}%"></i></div></td>
     <td>${x.bestH}</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
     <tr><td></td><td colspan="5" class="hs" style="text-align:left">${per}</td></tr>`;
   });
   h+='</table>';
   $('res').innerHTML=h;
+  $('res').querySelectorAll('.res-row').forEach(row=>{
+    row.onclick=()=>{
+      const idx=parseInt(row.dataset.idx,10);
+      simulateChoice(idx);
+    };
+  });
   setSimBtn();
   const b=results[order[0]];
-  $('hint').textContent=`建議先點 第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]}),預計規劃 ${b.bestH} 步,期望 ${b.best.toFixed(2)} 張/步。`;
+  $('hint').innerHTML=`建議先點 <b>第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]})</b>，預計規劃 ${b.bestH} 步，期望 ${b.best.toFixed(2)} 張/步。<br><span style="color:var(--acc);font-size:12.5px">💡 點擊盤面任一格或右側清單可模擬該起手點｜按【✏️ 修改盤面】可解除鎖定重新塗色</span>`;
+  $('edit-board').style.display='inline-block';
 }
 // 在主執行緒也載入一份引擎,用來產生模擬動畫的每一步
 let ENG=null;
@@ -530,52 +591,200 @@ function buildSteps(start,idx){
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let animating=false;
-async function animate(start,idx){
-  if(animating)return;animating=true;
-  $('sim').disabled=true;$('go').disabled=true;
+
+// 模擬演練播放器核心 (Step-by-Step Simulation Controller)
+let simData=null,simIdx=-1,simStepIdx=-1,simPlaying=false,simTimer=null,simShown=false,simEls=new Map();
+
+function posText(i){
+  return `第${Math.floor(i/5)+1}列第${i%5+1}行(${NAMES[board[i]]})`;
+}
+
+function updateActiveSimRow(idx){
+  $('res').querySelectorAll('.res-row').forEach(row=>{
+    row.classList.toggle('active',parseInt(row.dataset.idx,10)===idx);
+  });
+}
+
+function setupSimStage(idx){
+  if(simTimer){clearTimeout(simTimer);simTimer=null;}
+  simPlaying=false;
+  simIdx=idx;
+  simData=buildSteps(board.slice(),idx);
+  simStepIdx=-1;
+  simShown=true;
+  
+  $('sim-ctrl').style.display='flex';
+  $('sim-title').textContent=`模擬演練：${posText(idx)}`;
+  $('sim-progress').textContent=`準備開始 (共 ${simData.steps.length} 動)`;
+  $('sim-play').textContent='▶️ 播放';
+  $('sim').textContent='回復版面';
+  $('go').disabled=true;
   updateHistoryBtns();
-  const sp=0.5;
-  const {steps,total,final,colorOf}=buildSteps(start,idx);
+
+  renderSimState(-1);
+  updateActiveSimRow(idx);
+}
+
+function renderSimState(targetStep){
   const g=$('grid');g.innerHTML='';g.classList.add('stage');
-  g.style.setProperty('--fall',(0.5*sp)+'s');g.style.setProperty('--popd',(0.45*sp)+'s');
-  const els=new Map();
+  const sp=0.5;
+  g.style.setProperty('--fall',(0.5*sp)+'s');
+  g.style.setProperty('--popd',(0.45*sp)+'s');
+  simEls=new Map();
   const place=(el,row,col)=>{el.style.setProperty('--r',row);el.style.setProperty('--c',col);};
-  const mk=(color,row,col)=>{const el=document.createElement('div');el.className='cell tile c'+color;el.textContent=NAMES[color];place(el,row,col);g.appendChild(el);return el;};
-  start.forEach((c,i)=>els.set(i,mk(c,Math.floor(i/5),i%5)));
-  const pos=i=>`第${Math.floor(i/5)+1}列第${i%5+1}行`;
-  $('hint').textContent=`點擊 ${pos(idx)}(${NAMES[start[idx]]})…`;
+  const mk=(color,row,col)=>{
+    const el=document.createElement('div');el.className='cell tile c'+color;
+    el.textContent=NAMES[color];place(el,row,col);g.appendChild(el);return el;
+  };
+  board.forEach((c,i)=>simEls.set(i,mk(c,Math.floor(i/5),i%5)));
+
   let cum=0;
-  await sleep(350*sp);
-  for(const st of steps){
+  for(let s=0;s<=targetStep&&s<simData.steps.length;s++){
+    const st=simData.steps[s];
     if(st.type==='clear'){
-      st.ids.forEach(id=>els.get(id).classList.add('pop'));
       cum+=st.ids.length;
-      $('hint').textContent=st.round===0?`點擊 ${pos(idx)}(${NAMES[start[idx]]})`:`連鎖 ${st.round}:消除 ${st.ids.length} 張,累計 ${cum} 張`;
-      await sleep(450*sp+80);
-      st.ids.forEach(id=>{els.get(id).remove();els.delete(id);});
-    }else{
-      for(const s of st.spawns)els.set(s.id,mk(s.color,s.from,s.col));
-      void g.offsetWidth; // 先讓新卡在上方定位,再改位置才會有掉落動畫
-      for(const m of st.moves)place(els.get(m.id),m.row,m.col);
-      for(const s of st.spawns)place(els.get(s.id),s.row,s.col);
-      await sleep(500*sp+120);
+      st.ids.forEach(id=>{
+        const el=simEls.get(id);if(el)el.remove();simEls.delete(id);
+      });
+    }else if(st.type==='fall'){
+      for(const m of st.moves){
+        const el=simEls.get(m.id);if(el)place(el,m.row,m.col);
+      }
     }
   }
-  // 模擬只是預覽:盤面與排名結果都維持不變
-  $('hint').textContent=`模擬:點了${pos(idx)},共消除 ${total} 張(連鎖 ${steps.filter(s=>s.type==='clear').length-1} 輪)。模擬不補新牌,只看既有卡片掉落後的連鎖;盤面沒有改變。`;
-  simShown=true;animating=false;setSimBtn();$('go').disabled=false;
+  simStepIdx=targetStep;
+  updateSimUI(cum);
+}
+
+function updateSimUI(cum=0){
+  const totalSteps=simData?simData.steps.length:0;
+  const cur=simStepIdx+1;
+  $('sim-progress').textContent=`進度: ${cur} / ${totalSteps}`;
+  $('sim-play').textContent=simPlaying?'⏸️ 暫停':(cur>=totalSteps?'🔄 重播':'▶️ 播放');
+  
+  if(simStepIdx<0){
+    $('hint').textContent=`模擬準備：點擊 ${posText(simIdx)}，按「播放」或「下一步」開始逐步演練。`;
+  }else{
+    const st=simData.steps[simStepIdx];
+    if(st.type==='clear'){
+      $('hint').textContent=st.round===0?`第 0 動：消除點擊之 ${posText(simIdx)}`:`連鎖第 ${st.round} 輪：消除 ${st.ids.length} 張 (累計已消 ${cum} 張)`;
+    }else{
+      $('hint').textContent='既有卡片受重力掉落，補位完畢。';
+    }
+  }
+
+  $('sim-prev').disabled=simStepIdx<0;
+  $('sim-next').disabled=simStepIdx>=totalSteps-1;
+}
+
+async function simStepForward(isAuto=false){
+  if(!simData||simStepIdx>=simData.steps.length-1)return;
+  const nextIdx=simStepIdx+1;
+  const st=simData.steps[nextIdx];
+  const sp=0.5;
+
+  if(st.type==='clear'){
+    st.ids.forEach(id=>{
+      const el=simEls.get(id);if(el)el.classList.add('pop');
+    });
+    await sleep(350*sp+60);
+    st.ids.forEach(id=>{
+      const el=simEls.get(id);if(el)el.remove();simEls.delete(id);
+    });
+  }else if(st.type==='fall'){
+    const g=$('grid');void g.offsetWidth;
+    for(const m of st.moves){
+      const el=simEls.get(m.id);
+      if(el){el.style.setProperty('--r',m.row);el.style.setProperty('--c',m.col);}
+    }
+    await sleep(400*sp+80);
+  }
+
+  simStepIdx=nextIdx;
+  let cum=0;
+  for(let s=0;s<=simStepIdx;s++){
+    if(simData.steps[s].type==='clear')cum+=simData.steps[s].ids.length;
+  }
+  updateSimUI(cum);
+
+  if(simStepIdx>=simData.steps.length-1){
+    simPlaying=false;
+    $('hint').textContent=`模擬結束：共消除 ${simData.total} 張卡片 (連鎖 ${simData.steps.filter(s=>s.type==='clear').length-1} 輪)。盤面原狀維持不變。`;
+    updateSimUI(simData.total);
+  }
+}
+
+function simStepBackward(){
+  if(simPlaying)toggleSimPlay();
+  if(!simData||simStepIdx<0)return;
+  renderSimState(simStepIdx-1);
+}
+
+function toggleSimPlay(){
+  if(!simData)return;
+  if(simStepIdx>=simData.steps.length-1){
+    renderSimState(-1);
+    simPlaying=true;
+    runSimLoop();
+    return;
+  }
+  simPlaying=!simPlaying;
+  updateSimUI();
+  if(simPlaying){
+    runSimLoop();
+  }else if(simTimer){
+    clearTimeout(simTimer);simTimer=null;
+  }
+}
+
+async function runSimLoop(){
+  if(!simPlaying)return;
+  if(simStepIdx>=simData.steps.length-1){
+    simPlaying=false;
+    updateSimUI();
+    return;
+  }
+  await simStepForward(true);
+  if(simPlaying){
+    simTimer=setTimeout(runSimLoop,220);
+  }
+}
+
+function exitSim(){
+  if(simTimer){clearTimeout(simTimer);simTimer=null;}
+  simPlaying=false;
+  simShown=false;
+  simData=null;
+  $('sim-ctrl').style.display='none';
+  $('go').disabled=false;
   updateHistoryBtns();
+  render();
+  if(results)showResults();
 }
-let simShown=false; // true:格子目前顯示的是模擬後的畫面
-function setSimBtn(){ // 有計算結果(或正顯示模擬畫面)才能按;動畫播放中停用
-  const b=$('sim');b.textContent=simShown?'回復版面':'模擬點擊 #1';
-  b.disabled=animating||(!results&&!simShown);
+
+function simulateChoice(idx){
+  setupSimStage(idx);
+  simPlaying=true;
+  runSimLoop();
 }
-function simulate(){ // 播放一次隨機模擬;模擬完按鈕變成「回復版面」
-  if(animating)return;
-  if(simShown){render();$('hint').textContent='已回復為你的盤面,可以再次模擬。';return;}
-  animate(board.slice(),rank()[0]);
+
+function setSimBtn(){
+  const b=$('sim');
+  b.textContent=simShown?'回復版面':'模擬最佳 #1';
+  b.disabled=!results&&!simShown;
 }
+
+function simulate(){
+  if(simShown){exitSim();return;}
+  if(results&&rank())simulateChoice(rank()[0]);
+}
+
+// 模擬控制列按鈕事件綁定
+$('sim-prev').onclick=simStepBackward;
+$('sim-play').onclick=toggleSimPlay;
+$('sim-next').onclick=()=>{if(simPlaying)toggleSimPlay();simStepForward();};
+$('sim-replay').onclick=()=>{renderSimState(-1);simPlaying=true;runSimLoop();};
+$('sim-exit').onclick=exitSim;
 
 function run(){
   if(worker)worker.terminate();
@@ -599,6 +808,10 @@ function run(){
 $('go').onclick=run;
 /* ===== 截圖辨識 ===== */
 const CARD=0.914; // 卡片寬 / 格距(含縫隙)
+function isEyeMode(){
+  const cb=$('eyemode');
+  return !!(cb&&cb.checked);
+}
 function rgb2hsv(r,g,b){
   r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
   let h=0;if(d){if(mx===r)h=((g-b)/d+6)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;}
@@ -606,8 +819,23 @@ function rgb2hsv(r,g,b){
 }
 // 色相 → 屬性(0水 1火 2木 3光 4暗),不夠鮮豔的回傳 -1
 function classify(r,g,b){
+  if(isEyeMode()){
+    // 護眼模式/濾藍光色差校正: 補償藍色通道、調諧紅綠通道
+    b=Math.min(255,Math.round(b*1.55));
+    r=Math.round(r*0.90);
+    g=Math.round(g*0.95);
+  }
   const [h,s,v]=rgb2hsv(r,g,b);
-  if(s<0.45||v<0.45)return -1;
+  const minSat=isEyeMode()?0.30:0.45;
+  const minVal=isEyeMode()?0.30:0.45;
+  if(s<minSat||v<minVal)return -1;
+  if(isEyeMode()){
+    if(h>=165&&h<255)return 0; // 水 (放寬色相適應青/暗藍)
+    if(h>=75&&h<165)return 2;  // 木
+    if(h>=36&&h<75)return 3;   // 光
+    if(h>=240&&h<345)return 4; // 暗 (補償後還原紫色)
+    return 1;                  // 火
+  }
   if(h>=180&&h<245)return 0;
   if(h>=75&&h<175)return 2;
   if(h>=38&&h<75)return 3;
@@ -639,9 +867,14 @@ function detectGrid(full){
   const c=document.createElement('canvas');c.width=w;c.height=h;
   const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(full,0,0,w,h);
   const d=g.getImageData(0,0,w,h).data,navy=new Uint8Array(w*h);
+  const eye=isEyeMode();
   for(let i=0;i<w*h;i++){
     const [hh,s,v]=rgb2hsv(d[i*4],d[i*4+1],d[i*4+2]);
-    navy[i]=(hh>=200&&hh<255&&s>0.3&&v>0.1&&v<0.5)?1:0;
+    if(eye){
+      navy[i]=(hh>=180&&hh<255&&s>0.2&&v>0.08&&v<0.6)?1:0;
+    }else{
+      navy[i]=(hh>=200&&hh<255&&s>0.3&&v>0.1&&v<0.5)?1:0;
+    }
   }
   const panels=labelComps(navy,w,h).sort((a,b)=>b.area-a.area);
   if(!panels.length||panels[0].area<w*h*0.03)return null;
@@ -739,10 +972,11 @@ function redrawShot(apply=true){
   render();
 }
 (function(){
-  const cv=$('cv');let drag=null;
+  const cv=$('cv');let drag=null,downPt=null;
   const pt=e=>{const b=cv.getBoundingClientRect(),sc=shot.w/b.width;return [(e.clientX-b.left)*sc,(e.clientY-b.top)*sc,sc];};
   cv.addEventListener('pointerdown',e=>{
     if(!shot)return;const [x,y,sc]=pt(e),R=shot.rect,rad=22*sc;
+    downPt={x,y};
     const d0=Math.hypot(x-R.x0,y-R.y0),d1=Math.hypot(x-R.x1,y-R.y1);
     if(d0<rad&&d0<=d1)drag={k:'tl'};else if(d1<rad)drag={k:'br'};
     else if(x>R.x0&&x<R.x1&&y>R.y0&&y<R.y1)drag={k:'mv',ox:x-R.x0,oy:y-R.y0};
@@ -756,7 +990,26 @@ function redrawShot(apply=true){
     else{const w=R.x1-R.x0,h=R.y1-R.y0;R.x0=x-drag.ox;R.y0=y-drag.oy;R.x1=R.x0+w;R.y1=R.y0+h;}
     if(!raf)raf=requestAnimationFrame(()=>{raf=0;redrawShot();});
   });
-  const end=()=>{drag=null;};
+  const end=e=>{
+    if(drag){drag=null;}
+    else if(shot&&downPt){
+      // 點擊預覽圖卡片可直接循環修正屬性 (水->火->木->光->暗)
+      const [x,y,sc]=pt(e),R=shot.rect;
+      const dist=Math.hypot(x-downPt.x,y-downPt.y);
+      if(dist<8*sc&&x>=R.x0&&x<=R.x1&&y>=R.y0&&y<=R.y1){
+        const [px,py]=pitch();
+        const c=Math.floor((x-R.x0)/px);
+        const r=Math.floor((y-R.y0)/py);
+        if(c>=0&&c<5&&r>=0&&r<5){
+          const idx=r*5+c;
+          const cur=shot.cells[idx];
+          shot.cells[idx]=(cur<0?0:(cur+1)%5);
+          redrawShot(true);
+        }
+      }
+    }
+    drag=null;downPt=null;
+  };
   cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
   window.addEventListener('resize',()=>redrawShot(false));
   $('redet').onclick=()=>{
@@ -764,12 +1017,20 @@ function redrawShot(apply=true){
     if(a)shot.rect={x0:a.x0,y0:a.y0,x1:a.x1,y1:a.y1};
     redrawShot();
   };
+  $('eyemode').onchange=()=>{if(shot)redrawShot(true);};
   $('up').onclick=()=>$('file').click();
   $('file').onchange=e=>{if(e.target.files[0])loadShot(e.target.files[0]);e.target.value='';};
   document.addEventListener('paste',e=>{for(const it of e.clipboardData.items)if(it.type.startsWith('image/')){loadShot(it.getAsFile());e.preventDefault();break;}});
   document.addEventListener('dragover',e=>e.preventDefault());
   document.addEventListener('drop',e=>{e.preventDefault();const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('image/'));if(f)loadShot(f);});
 })();
+
+// PWA 離線 Service Worker 註冊
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  });
+}
 
 $('depth').onchange=()=>{results=null;$('res').innerHTML='';$('hint').textContent='「規劃步數上限」已變更,請重新計算。';render();};
 $('sim').onclick=simulate;
