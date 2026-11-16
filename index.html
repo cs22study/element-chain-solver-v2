@@ -405,7 +405,9 @@ function render(){
       // 期望分數越高越鮮亮,越低越灰暗
       const t=hi>lo?(x.best-lo)/(hi-lo):1;
       d.style.filter=`saturate(${(0.05+0.95*t).toFixed(2)}) brightness(${(0.5+0.5*t).toFixed(2)})`;
-      inner=`<span class="rk">#${r}</span>${r===1?'<span class="star">★</span>':''}${NAMES[board[i]]}<small>${x.best.toFixed(2)}</small>`;
+      const pts=Math.round(x.best*10);
+      inner=`<span class="rk">#${r}</span>${r===1?'<span class="star">★</span>':''}${NAMES[board[i]]}<small>${pts}分</small>`;
+      d.title=`起手點 #${r}: 預估 ${pts} 分 (期望消除 ${x.best.toFixed(2)} 張/步)`;
     }
     d.innerHTML=inner;
     g.appendChild(d);
@@ -533,14 +535,17 @@ function loadState(){
 }
 function showResults(){
   const order=rank();const top=results[order[0]].best||1;
-  let h='<table><tr><th>#</th><th>位置</th><th>屬性</th><th>期望分數<br>消除/步</th><th>最佳步數</th><th>第 1 步連鎖率</th></tr>';
+  let h='<table><tr><th>#</th><th>位置</th><th>屬性</th><th>預估得分<br><small style="color:var(--mut);font-weight:normal">10分/格</small></th><th>期望消除<br><small style="color:var(--mut);font-weight:normal">張/步</small></th><th>最佳步數</th><th>第 1 步連鎖率</th></tr>';
   order.slice(0,10).forEach((idx,k)=>{
     const x=results[idx],r=Math.floor(idx/5)+1,c=idx%5+1;
-    const per=x.q.slice(1).map((v,i)=>`<b>${i+1}步</b> ${(v/(i+1)).toFixed(2)}`).join(' · ');
+    const scorePts=Math.round(x.best*10);
+    const totalPts=Math.round(x.q[x.bestH]*10);
+    const per=x.q.slice(1).map((v,i)=>`<b>${i+1}步</b> 預估 ${Math.round((v/(i+1))*10)}分/步 (${(v/(i+1)).toFixed(2)}張${i>0?`，總計${Math.round(v*10)}分`:''})`).join(' · ');
     h+=`<tr class="res-row" data-idx="${idx}" title="點擊模擬此方案"><td>${k+1}</td><td>第${r}列 第${c}行</td><td><span class="cell c${board[idx]}" style="display:inline-flex;width:28px;height:28px;font-size:14px;border-width:0">${NAMES[board[idx]]}</span></td>
-    <td><b>${x.best.toFixed(2)}</b><div class="bar"><i style="width:${(x.best/top*100).toFixed(0)}%"></i></div></td>
-    <td>${x.bestH}</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
-    <tr><td></td><td colspan="5" class="hs" style="text-align:left">${per}</td></tr>`;
+    <td><b style="color:var(--acc);font-size:15px">${scorePts} 分</b>${x.bestH>1?`<div class="hs" style="color:var(--mut)">總計 ${totalPts}分</div>`:''}<div class="bar"><i style="width:${(x.best/top*100).toFixed(0)}%"></i></div></td>
+    <td><b>${x.best.toFixed(2)}</b> 張</td>
+    <td>${x.bestH} 步</td><td>${(x.pc*100).toFixed(0)}%</td></tr>
+    <tr><td></td><td colspan="6" class="hs" style="text-align:left">${per}</td></tr>`;
   });
   h+='</table>';
   $('res').innerHTML=h;
@@ -552,7 +557,8 @@ function showResults(){
   });
   setSimBtn();
   const b=results[order[0]];
-  $('hint').innerHTML=`建議先點 <b>第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]})</b>，預計規劃 ${b.bestH} 步，期望 ${b.best.toFixed(2)} 張/步。<br><span style="color:var(--acc);font-size:12.5px">💡 點擊盤面任一格或右側清單可模擬該起手點｜按【✏️ 修改盤面】可解除鎖定重新塗色</span>`;
+  const topScore=Math.round(b.best*10);
+  $('hint').innerHTML=`建議先點 <b>第${Math.floor(b.idx/5)+1}列 第${b.idx%5+1}行(${NAMES[board[b.idx]]})</b>，預估可得 <b style="color:var(--acc);font-size:16px">${topScore} 分</b> (期望消除 ${b.best.toFixed(2)} 張/步，規劃 ${b.bestH} 步${b.bestH>1?`，總計 ${Math.round(b.q[b.bestH]*10)} 分`:''})。<br><span style="color:var(--acc);font-size:12.5px">💡 點擊盤面任一格或右側清單可模擬該起手點｜按【✏️ 修改盤面】可解除鎖定重新塗色</span>`;
   $('edit-board').style.display='inline-block';
 }
 // 在主執行緒也載入一份引擎,用來產生模擬動畫的每一步
@@ -613,9 +619,10 @@ function setupSimStage(idx){
   simStepIdx=-1;
   simShown=true;
   
+  const expPts=results&&results[idx]?` (預估 ${Math.round(results[idx].best*10)}分)`:'';
   $('sim-ctrl').style.display='flex';
-  $('sim-title').textContent=`模擬演練：${posText(idx)}`;
-  $('sim-progress').textContent=`準備開始 (共 ${simData.steps.length} 動)`;
+  $('sim-title').textContent=`模擬演練：${posText(idx)}${expPts}`;
+  $('sim-progress').textContent=`準備開始 (共 ${simData.steps.length} 動) | 目前得分: 0 分`;
   $('sim-play').textContent='▶️ 播放';
   $('sim').textContent='回復版面';
   $('go').disabled=true;
@@ -659,17 +666,19 @@ function renderSimState(targetStep){
 function updateSimUI(cum=0){
   const totalSteps=simData?simData.steps.length:0;
   const cur=simStepIdx+1;
-  $('sim-progress').textContent=`進度: ${cur} / ${totalSteps}`;
-  $('sim-play').textContent=simPlaying?'⏸️ 暫停':(cur>=totalSteps?'🔄 重播':'▶️ 播放');
+  const curPts=cum*10;
+  $('sim-progress').textContent=`進度: ${cur} / ${totalSteps} | 目前得分: ${curPts} 分`;
+  $('sim-play').textContent=simPlaying?'⏸️ 暫停':(cur>=totalSteps?'▶️ 再次播放':'▶️ 播放');
   
   if(simStepIdx<0){
     $('hint').textContent=`模擬準備：點擊 ${posText(simIdx)}，按「播放」或「下一步」開始逐步演練。`;
   }else{
     const st=simData.steps[simStepIdx];
     if(st.type==='clear'){
-      $('hint').textContent=st.round===0?`第 0 動：消除點擊之 ${posText(simIdx)}`:`連鎖第 ${st.round} 輪：消除 ${st.ids.length} 張 (累計已消 ${cum} 張)`;
+      const earned=st.ids.length*10;
+      $('hint').textContent=st.round===0?`第 0 動：消除點選之 ${posText(simIdx)} (+${earned}分，目前得分 ${curPts}分)`:`連鎖第 ${st.round} 輪：消除 ${st.ids.length} 張 (+${earned}分，累計已消 ${cum} 張，目前得分 ${curPts}分)`;
     }else{
-      $('hint').textContent='既有卡片受重力掉落，補位完畢。';
+      $('hint').textContent=`既有卡片受重力掉落，補位完畢。(目前累計得分 ${curPts}分)`;
     }
   }
 
@@ -709,7 +718,8 @@ async function simStepForward(isAuto=false){
 
   if(simStepIdx>=simData.steps.length-1){
     simPlaying=false;
-    $('hint').textContent=`模擬結束：共消除 ${simData.total} 張卡片 (連鎖 ${simData.steps.filter(s=>s.type==='clear').length-1} 輪)。盤面原狀維持不變。`;
+    const finalPts=simData.total*10;
+    $('hint').textContent=`模擬結束：共消除 ${simData.total} 張卡片，獲得 ${finalPts} 分 (連鎖 ${simData.steps.filter(s=>s.type==='clear').length-1} 輪)。盤面原狀維持不變。`;
     updateSimUI(simData.total);
   }
 }
