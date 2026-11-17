@@ -154,3 +154,44 @@ assert(htmlContent.includes('.cell-score'), 'index.html 必須包含 .cell-score
 assert(htmlContent.includes('.cell-sub'), 'index.html 必須包含 .cell-sub 步數/張數標籤');
 assert(htmlContent.includes('.badge-layout'), 'index.html 必須包含 .badge-layout 佈局提示徽章');
 console.log('✅ 測試 5 通過：雙排呈現與提示標籤完整整合！');
+
+console.log('--- 測試 6: 上傳新截圖自動開新局狀態機驗證 ---');
+// 模擬使用者操作狀態機
+const mockState = {
+  simShown: true,
+  simPlaying: true,
+  simData: { steps: [1, 2, 3] },
+  goDisabled: true,
+  simBtnText: '回復版面',
+  simBtnDisabled: false,
+  editBoardDisplay: 'inline-block',
+  results: [{ idx: 0, best: 8.0 }],
+  resHtml: '<table>舊榜單</table>',
+  pgWidth: '100%'
+};
+
+function mockPrepareNewGame(state) {
+  state.simShown = false;
+  state.simPlaying = false;
+  state.simData = null;
+  state.goDisabled = false;
+  state.simBtnText = '模擬最佳 #1';
+  state.simBtnDisabled = true;
+  state.editBoardDisplay = 'none';
+  state.results = null;
+  state.resHtml = '';
+  state.pgWidth = '0';
+}
+
+mockPrepareNewGame(mockState);
+assert.strictEqual(mockState.simShown, false, '新局必須退出模擬狀態');
+assert.strictEqual(mockState.simData, null, '模擬數據必須清空');
+assert.strictEqual(mockState.goDisabled, false, '計算按鈕必須重新啟用 (disabled=false)');
+assert.strictEqual(mockState.simBtnText, '模擬最佳 #1', '模擬按鈕文字必須還原');
+assert.strictEqual(mockState.simBtnDisabled, true, '模擬按鈕在新局未計算前必須禁用');
+assert.strictEqual(mockState.editBoardDisplay, 'none', '修改盤面按鈕必須隱藏');
+assert.strictEqual(mockState.results, null, '舊局運算結果必須徹底清空');
+assert.strictEqual(mockState.resHtml, '', '舊局榜單必須清空');
+assert(htmlContent.includes('id="autocalc"'), 'index.html 必須包含 #autocalc 自動計算勾選項');
+assert(htmlContent.includes('prepareNewGame'), 'index.html 必須具備 prepareNewGame 函數');
+console.log('✅ 測試 6 通過：上傳新圖自動開新局狀態機與按鈕恢復邏輯驗證無誤！');

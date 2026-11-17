@@ -133,7 +133,10 @@ footer a:hover{color:var(--acc)}
   <details id="shot">
    <summary>截圖辨識(可上傳、拖曳或 Ctrl+V 貼上)</summary>
    <div class="mut" style="margin-top:6px">拖動畫面上的框對準 5×5 卡片。點擊畫面上的卡片可直接切換屬性修正辨識。</div>
-   <div class="row" style="margin-top:8px;gap:12px;align-items:center">
+   <div class="row" style="margin-top:8px;gap:12px;align-items:center;flex-wrap:wrap">
+    <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--tx)">
+     <input type="checkbox" id="autocalc" checked> ⚡ 辨識完成後自動計算新局
+    </label>
     <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--tx)">
      <input type="checkbox" id="eyemode"> 🌙 護眼/濾藍光色差校正 (改善偏黃偏暖、水/暗誤判)
     </label>
@@ -326,8 +329,28 @@ function updateHistoryBtns(){
   if(rst)rst.disabled=animating;
   if(fil)fil.disabled=animating;
 }
+
+// 徹底退出模擬演練並重置為新局就緒狀態 (消除卡在模擬狀態或舊計算結果的痛點)
+function prepareNewGame(options={}){
+  if(simTimer){clearTimeout(simTimer);simTimer=null;}
+  simPlaying=false;
+  simShown=false;
+  simData=null;
+  const simBar=$('sim-ctrl');if(simBar)simBar.style.display='none';
+  if(worker){worker.terminate();worker=null;}
+  const goBtn=$('go');if(goBtn)goBtn.disabled=false;
+  const simBtn=$('sim');if(simBtn){simBtn.textContent='模擬最佳 #1';simBtn.disabled=true;}
+  const editBtn=$('edit-board');if(editBtn)editBtn.style.display='none';
+  results=null;
+  const resDiv=$('res');if(resDiv)resDiv.innerHTML='';
+  const pg=$('pg');if(pg)pg.style.width='0';
+  if(!options.keepStatus){const st=$('st');if(st)st.textContent='';}
+  updateHistoryBtns();
+}
+
 function undo(){
   if(animating||undoStack.length===0)return;
+  if(simShown)prepareNewGame();
   redoStack.push(board.slice());
   board=undoStack.pop();
   results=null;$('res').innerHTML='';
@@ -336,6 +359,7 @@ function undo(){
 }
 function redo(){
   if(animating||redoStack.length===0)return;
+  if(simShown)prepareNewGame();
   undoStack.push(board.slice());
   board=redoStack.pop();
   results=null;$('res').innerHTML='';
@@ -361,25 +385,25 @@ function generateRandomBoard(noInitialMatches=true){
 }
 function newRandomGame(){
   if(animating)return;
+  prepareNewGame();
   pushUndo();
   board=generateRandomBoard(true);
-  results=null;$('res').innerHTML='';
   $('hint').textContent='🎲 已生成一局隨機盤面(保證無初始 3 連消除)，可按「計算」或自訂修改！';
   render();
 }
 function resetBoard(){
   if(animating)return;
+  prepareNewGame();
   pushUndo();
   board=DEFAULT_BOARD.slice();
-  results=null;$('res').innerHTML='';
   $('hint').textContent='🔄 已回復為預設範例盤面。';
   render();
 }
 function fillBoardWithBrush(){
   if(animating)return;
+  prepareNewGame();
   pushUndo();
   board=new Array(25).fill(brush);
-  results=null;$('res').innerHTML='';
   $('hint').textContent=`🎨 已將全盤填滿為【${NAMES[brush]}】屬性，方便您自由重新佈局。`;
   render();
 }
@@ -389,9 +413,8 @@ const pal=$('pal');
 NAMES.forEach((n,i)=>{const b=document.createElement('button');b.className='pal c'+i+(i===brush?' on':'');b.textContent=n;
  b.onclick=()=>{
    brush=i;[...pal.children].forEach((x,j)=>x.classList.toggle('on',j===i));
-   if(results!==null){
-     if(simShown)exitSim();
-     results=null;$('edit-board').style.display='none';$('res').innerHTML='';
+   if(results!==null||simShown){
+     prepareNewGame();
      $('hint').textContent=`已選取【${n}】筆刷並進入修改模式，可點選或滑動塗色。`;
      render();
    }
@@ -567,7 +590,10 @@ window.addEventListener('keydown',e=>{
 // 重新整理後保留盤面與上次的計算結果(只存在這個瀏覽器,不會上傳)
 const SAVE_KEY='element-chain-solver.v1';
 function saveState(){
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({board,results,depth:$('depth').value,strategy:$('strategy').value}));}catch(e){}
+  try{
+    const autocalc=$('autocalc')?$('autocalc').checked:true;
+    localStorage.setItem(SAVE_KEY,JSON.stringify({board,results,depth:$('depth').value,strategy:$('strategy').value,autocalc}));
+  }catch(e){}
 }
 function loadState(){
   try{
@@ -576,6 +602,7 @@ function loadState(){
     board=d.board;
     if(['2','3','4'].includes(String(d.depth)))$('depth').value=String(d.depth);
     if(['instant','expect','safe'].includes(String(d.strategy)))$('strategy').value=String(d.strategy);
+    if(typeof d.autocalc==='boolean'&&$('autocalc'))$('autocalc').checked=d.autocalc;
     const r=d.results;
     if(Array.isArray(r)&&r.length===25&&r.every(x=>x&&Array.isArray(x.q)&&Number.isFinite(x.best)&&Number.isFinite(x.bestH)))results=r;
     return true;
@@ -999,6 +1026,8 @@ function detectGrid(full){
 }
 let shot=null;
 function loadShot(file){
+  prepareNewGame({keepStatus:true});
+  $('st').textContent='📷 正在載入並辨識截圖…';
   const url=URL.createObjectURL(file),img=new Image();
   img.onload=()=>{
     const full=document.createElement('canvas');full.width=img.naturalWidth;full.height=img.naturalHeight;
@@ -1057,12 +1086,25 @@ function redrawShot(apply=true){
     g.fillStyle='#fff';g.strokeStyle='#000';g.beginPath();g.arc(hx*sc,hy*sc,8,0,7);g.fill();g.stroke();
   }
   if(!apply)return; // 只是視窗大小改變(例如手機捲動收起網址列),不動盤面與計算結果
+  
+  // 徹底重置為新局就緒狀態 (解除任何模擬演練鎖定、啟用計算按鈕、清空舊結果)
+  prepareNewGame();
+  
   // 套用到盤面
   pushUndo();
   board=board.map((v,i)=>shot.cells[i]>=0?shot.cells[i]:v);
-  results=null;$('res').innerHTML='';$('hint').textContent='已由截圖更新盤面,請按「計算」。'+((!shot.auto||unk)?'(辨識可能有誤,請展開「截圖辨識」檢查)':'');
-  $('shotmsg').textContent=(shot.auto?'已自動定位格子。':'自動定位失敗,請手動拖框對準 5×5 卡片。')+(unk?` 有 ${unk} 格無法辨識(紅色「?」,沿用原本的值),請調整框或用筆刷手動修正。`:' 25 格都已辨識,若有錯誤可微調框或用筆刷修正。');
   render();
+
+  const isAutoCalc=$('autocalc')&&$('autocalc').checked;
+  if(!unk&&isAutoCalc){
+    $('hint').innerHTML='📷 已由截圖成功設定新局盤面，<b style="color:var(--acc)">正在為您自動計算最佳起手點…</b>';
+    $('shotmsg').textContent=(shot.auto?'已自動定位格子。':'自動定位完成。')+' 25 格已完整辨識，已自動開局並計算最佳起手點。';
+    run();
+  }else{
+    $('hint').innerHTML='📷 已由截圖設定為新局盤面，請按 <b style="color:var(--acc);font-size:16px">【計算】</b> 開始分析最佳起手點。'+((!shot.auto||unk)?'<br><span style="color:#fcd34d">(辨識可能有誤,請展開「截圖辨識」檢查或點擊卡片微調)</span>':'');
+    $('shotmsg').textContent=(shot.auto?'已自動定位格子。':'自動定位失敗,請手動拖框對準 5×5 卡片。')+(unk?` 有 ${unk} 格無法辨識(紅色「?」,沿用原本的值),請調整框或點擊卡片修正後點擊計算。`:' 25 格都已辨識，點按上方【計算】即可開始分析。');
+    if(unk)$('shot').open=true;
+  }
 }
 (function(){
   const cv=$('cv');let drag=null,downPt=null;
@@ -1111,6 +1153,7 @@ function redrawShot(apply=true){
     redrawShot();
   };
   $('eyemode').onchange=()=>{if(shot)redrawShot(true);};
+  $('autocalc').onchange=()=>saveState();
   $('up').onclick=()=>$('file').click();
   $('file').onchange=e=>{if(e.target.files[0])loadShot(e.target.files[0]);e.target.value='';};
   document.addEventListener('paste',e=>{for(const it of e.clipboardData.items)if(it.type.startsWith('image/')){loadShot(it.getAsFile());e.preventDefault();break;}});
